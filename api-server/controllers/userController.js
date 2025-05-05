@@ -1,4 +1,6 @@
 const User = require('../models/userModel');
+const Department = require('../models/departmentModel');
+const { localPool, cloudPool } = require('../config/db');
 
 // Create a new user
 exports.createUser = async (req, res) => {
@@ -6,9 +8,9 @@ exports.createUser = async (req, res) => {
     const userData = req.body;
     
     // Validate required fields
-    if (!userData.nom || !userData.prenom || !userData.email || !userData.motdepasse || !userData.roleuser) {
+    if (!userData.nom || !userData.prenom || !userData.email || !userData.motdepasse || !userData.roleuser || !userData.departement) {
       return res.status(400).json({ 
-        error: 'All fields are required (nom, prenom, email, motdepasse, roleuser)' 
+        error: 'All fields are required (nom, prenom, email, motdepasse, roleuser, departement)' 
       });
     }
     
@@ -28,8 +30,11 @@ exports.createUser = async (req, res) => {
     if (!validRoles.includes(userData.roleuser)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
+
+    // Handle department in both databases
+    await Department.handleDepartment(userData, 'create');
     
-    // Create the user
+    // Create the user in both databases
     const newUser = await User.create(userData);
     
     res.status(201).json({
@@ -78,6 +83,12 @@ exports.updateUser = async (req, res) => {
     const userId = req.params.id;
     const userData = req.body;
     
+    // Get current user to check department changes
+    const currentUser = await User.getById(userId);
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
     // Validate email if provided
     if (userData.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -98,6 +109,14 @@ exports.updateUser = async (req, res) => {
         return res.status(400).json({ error: 'Invalid role' });
       }
     }
+
+    // Handle department changes
+    if (userData.departement && userData.departement !== currentUser.departement) {
+      // Decrement user count for old department in both databases
+      await Department.handleDepartment({ departement: currentUser.departement }, 'delete');
+      // Handle new department in both databases
+      await Department.handleDepartment(userData, 'create');
+    }
     
     const updatedUser = await User.update(userId, userData);
     
@@ -117,6 +136,14 @@ exports.updateUser = async (req, res) => {
 // Delete a user
 exports.deleteUser = async (req, res) => {
   try {
+    const user = await User.getById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Decrement user count in both databases
+    await Department.handleDepartment({ departement: user.departement }, 'delete');
+
     await User.delete(req.params.id);
     res.status(200).json({ message: 'User deleted successfully' });
   } catch (error) {
@@ -125,5 +152,62 @@ exports.deleteUser = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     res.status(500).json({ error: 'Failed to delete user' });
+  }
+};
+
+// Toggle user status
+exports.toggleUserStatus = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    console.log('Attempting to toggle status for user ID:', userId);
+    
+    const user = await User.getById(userId);
+    console.log('Current user status:', user?.statut);
+    
+    if (!user) {
+      console.log('User not found with ID:', userId);
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    // Toggle the status
+    const newStatus = user.statut === 'active' ? 'inactive' : 'active';
+    console.log('New status will be:', newStatus);
+    
+    const updatedUser = await User.update(userId, { statut: newStatus });
+    console.log('Updated user:', updatedUser);
+    
+    res.status(200).json({
+      message: 'User status updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Error toggling user status:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    res.status(500).json({ 
+      error: 'Failed to update user status',
+      details: error.message 
+    });
+  }
+};
+
+// Get current user (by email from query or header for now)
+exports.getCurrentUser = async (req, res) => {
+  try {
+    const email = req.query.email || req.headers['x-user-email'];
+    if (!email) {
+      return res.status(400).json({ error: 'User email required' });
+    }
+    const user = await User.getByEmail(email);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('Error fetching current user:', error);
+    res.status(500).json({ error: 'Failed to fetch current user' });
   }
 };

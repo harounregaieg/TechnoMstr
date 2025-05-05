@@ -3,7 +3,7 @@
       :class="[
         'notification-item',
         `notification-${notification.type}`,
-        { 'notification-read': notification.read },
+        { 'notification-read': notification.is_read },
       ]"
       role="alert"
     >
@@ -12,16 +12,28 @@
       </div>
       <div class="notification-content">
         <p class="notification-message">{{ notification.message }}</p>
-        <time class="notification-time">{{ notification.time }}</time>
+        <div class="notification-metadata">
+          <span class="notification-category">{{ getCategoryLabel(notification.category) }}</span>
+          <time class="notification-time">{{ notification.time }}</time>
+        </div>
       </div>
-      <button
-        v-if="!notification.read"
-        class="notification-action"
-        @click="$emit('markAsRead', notification.id)"
-        :aria-label="'Mark notification as read'"
-      >
-        Mark as read
-      </button>
+      <div class="notification-actions">
+        <button
+          v-if="!notification.is_read"
+          class="notification-action read-action"
+          @click="$emit('mark-as-read', notification.id)"
+          :aria-label="'Mark notification as read'"
+        >
+          Marquer comme lu
+        </button>
+        <button
+          class="notification-action delete-action"
+          @click="$emit('delete', notification.id)"
+          :aria-label="'Delete notification'"
+        >
+          Supprimer
+        </button>
+      </div>
     </article>
   </template>
   
@@ -35,7 +47,7 @@
     },
   });
   
-  defineEmits(["markAsRead"]);
+  defineEmits(["mark-as-read", "delete"]);
   
   const getIcon = (type) => {
     const icons = {
@@ -44,7 +56,16 @@
       info: "ℹ",
       error: "✕",
     };
-    return icons[type];
+    return icons[type] || icons.info;
+  };
+  
+  const getCategoryLabel = (category) => {
+    const labels = {
+      equipment: 'Équipement',
+      ticket: 'Ticket',
+      system: 'Système'
+    };
+    return labels[category] || category;
   };
   </script>
   
@@ -66,8 +87,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    min-width: 32px;
+    height: 32px;
     border-radius: 50%;
     font-size: 14px;
   }
@@ -102,11 +123,30 @@
     font-size: 14px;
   }
   
+  .notification-metadata {
+    display: flex;
+    align-items: center;
+    margin-top: 4px;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.4);
+  }
+  
+  .notification-category {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.05);
+    margin-right: 8px;
+  }
+  
   .notification-time {
     display: block;
-    margin-top: 4px;
-    color: rgba(0, 0, 0, 0.4);
-    font-size: 12px;
+  }
+  
+  .notification-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
   
   .notification-action {
@@ -118,10 +158,29 @@
     border: none;
     cursor: pointer;
     transition: background-color 0.2s;
+    white-space: nowrap;
+  }
+  
+  .read-action {
+    background: rgba(0, 120, 255, 0.1);
+    color: #0969da;
+  }
+  
+  .delete-action {
+    background: rgba(255, 0, 0, 0.05);
+    color: #cf222e;
   }
   
   .notification-action:hover {
     background: rgba(0, 0, 0, 0.1);
+  }
+  
+  .read-action:hover {
+    background: rgba(0, 120, 255, 0.2);
+  }
+  
+  .delete-action:hover {
+    background: rgba(255, 0, 0, 0.1);
   }
   
   .notification-read {

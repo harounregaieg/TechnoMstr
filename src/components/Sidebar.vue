@@ -5,6 +5,11 @@
       <span v-else>{{ appName }}</span>
     </div>
 
+    <div class="user-info" v-if="is_Expanded && currentUser">
+      <span class="user-name">{{ currentUser.prenom }} {{ currentUser.nom }}</span>
+      <span class="user-role">{{ currentUser.roleuser }}</span>
+    </div>
+
     <div class="menu-toggle-wrap">
       <button class="menu-toggle" @click="ToggleMenu">
         <span class="material-icons">keyboard_double_arrow_right</span>
@@ -13,29 +18,33 @@
 
     <h3>Menu</h3>
     <div class="menu">
-      <router-link class="button" to="/">
+      <router-link class="button" to="/" v-if="canSee('dashboard')">
         <span class="material-icons">home</span>
         <span class="text">Dashboard</span>
       </router-link>
 
-      
+      <router-link class="button" to="/equipements" v-if="canSee('equipements')">
+        <span class="material-icons">list_alt</span>
+        <span class="text">Equipements</span>
+      </router-link>
 
-      <router-link class="button" to="/users">
+      <router-link class="button" to="/users" v-if="canSee('users')">
         <span class="material-icons">group</span>
         <span class="text">Users</span>
       </router-link>
 
-      <router-link class="button" to="/tickets">
+      <router-link class="button" to="/tickets" v-if="canSee('tickets')">
         <span class="material-icons">construction</span>
         <span class="text">Tickets</span>
       </router-link>
 
-      <router-link class="button" to="/notifications">
+      <router-link class="button notification-link" to="/notifications" v-if="canSee('notifications')">
         <span class="material-icons">notifications</span>
+        <span v-if="unreadCount > 0" class="notification-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         <span class="text">Notifications</span>
       </router-link>
 
-      <router-link class="button" to="/account">
+      <router-link class="button" to="/account" v-if="canSee('account')">
         <span class="material-icons">account_circle</span>
         <span class="text">Account</span>
       </router-link>
@@ -63,13 +72,28 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { notificationEvents } from '../services/eventBus'
 
 const is_Expanded = ref(localStorage.getItem("is_Expanded") === "true")
 const showConfirmDialog = ref(false)
 const appName = "TechnoMaster" // Set the name of your application
 const router = useRouter()
+const currentUser = ref(null)
+// Use the unread count from the event bus directly
+const unreadCount = notificationEvents.unreadCount
+
+onMounted(() => {
+  const userStr = localStorage.getItem('user')
+  if (userStr) {
+    try {
+      currentUser.value = JSON.parse(userStr)
+    } catch (e) {
+      console.error('Error parsing user data:', e)
+    }
+  }
+})
 
 const ToggleMenu = () => {
   is_Expanded.value = !is_Expanded.value
@@ -82,6 +106,7 @@ const handleLogout = () => {
 
 const confirmLogout = () => {
   localStorage.removeItem("is_Expanded")
+  localStorage.removeItem("user") // Also remove user data on logout
   showConfirmDialog.value = false
   router.push("/login")
 }
@@ -89,9 +114,43 @@ const confirmLogout = () => {
 const cancelLogout = () => {
   showConfirmDialog.value = false
 }
+
+const canSee = (section) => {
+  if (!currentUser.value) return false;
+  const role = currentUser.value.roleuser;
+  if (role === 'superadmin' || role === 'admin') return true;
+  if (role === 'technicien') {
+    return ['dashboard', 'equipements', 'tickets', 'notifications', 'account'].includes(section);
+  }
+  if (role === 'user') {
+    return ['dashboard', 'account'].includes(section);
+  }
+  return false;
+}
 </script>
 
 <style lang="scss" scoped>
+.notification-badge {
+  position: absolute;
+  top: 0;
+  right: 10px;
+  background-color: var(--primary);
+  color: white;
+  border-radius: 50%;
+  min-width: 18px;
+  height: 18px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  font-weight: bold;
+}
+
+.notification-link {
+  position: relative;
+}
+
 .logout-dialog {
   position: fixed;
   top: 0;
@@ -164,7 +223,7 @@ aside {
   background-color: var(--dark);
   color: var(--light);
 
-  transition: 0.2s ease-out;
+  transition: 0.3s ease-out;
 
   .flex {
     flex: 1 1 0;
@@ -185,6 +244,26 @@ aside {
       color: var(--light);
       font-family: 'Arial Black', sans-serif;
       ;
+    }
+  }
+
+  .user-info {
+    padding: 0.5rem 0;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--grey);
+    
+    .user-name {
+      display: block;
+      font-size: 0.9rem;
+      color: var(--light);
+      margin-bottom: 0.2rem;
+    }
+    
+    .user-role {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--primary);
+      text-transform: capitalize;
     }
   }
 

@@ -11,19 +11,16 @@
   
   <style lang="scss" scoped>
   .users-view {
-    width: 102%;
-    padding: 1rem;
-    padding-left: calc(2rem + 48px);
+    width: 1450px;
+    height: 80vh;
+    padding: 0;
+    margin: 0;
+    background: #f5f7fa;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     box-sizing: border-box;
-    transition: padding-left 0.2s ease-out;
-
-    &.sidebar-expanded {
-      padding-left: calc(var(--sidebar-width) + 1rem);
-    }
-    
-    h1 {
-      margin-bottom: 1rem;
-    }
+    transition: none;
   }
   </style>
   

@@ -61,55 +61,63 @@ defineEmits(["page-change", "items-per-page-change"]);  </script>
   .pagination {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 1rem;
+    justify-content: flex-end;
+    gap: 0.3rem;
+    padding: 0.7rem 0 0.2rem 0;
     border-top: 1px solid #e5e7eb;
+    background: none;
+  }
   
-    &__button {
-      padding: 0.5rem 1rem;
-      border: 1px solid #e5e7eb;
-      border-radius: 0.5rem;
-      background: white;
-      color: #374151;
-      font-size: 0.875rem;
-      transition: all 0.2s ease;
-  
-      &:hover:not(:disabled) {
-        background: #f3f4f6;
-        border-color: #d1d5db;
-      }
-  
-      &:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
+  .pagination__button {
+    padding: 0.32rem 0.85rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fff;
+    color: #2563eb;
+    font-size: 0.92rem;
+    font-weight: 500;
+    transition: background 0.16s, color 0.16s;
+    box-shadow: none;
+    &:hover:not(:disabled) {
+      background: #f1f5f9;
+      color: #1d4ed8;
+      border-color: #c7d2fe;
     }
-  
-    &__numbers {
-      display: flex;
-      gap: 0.25rem;
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: #f3f4f6;
+      color: #9ca3af;
     }
+  }
   
-    &__number {
-      width: 2.5rem;
-      height: 2.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 0.5rem;
-      font-size: 0.875rem;
-      color: #374151;
-      transition: all 0.2s ease;
+  .pagination__numbers {
+    display: flex;
+    gap: 0.15rem;
+  }
   
-      &:hover:not(.is-active) {
-        background: #f3f4f6;
-      }
-  
-      &.is-active {
-        background: #2563eb;
-        color: white;
-      }
+  .pagination__number {
+    width: 2.1rem;
+    height: 2.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-size: 0.92rem;
+    color: #374151;
+    font-weight: 500;
+    background: none;
+    border: none;
+    transition: background 0.16s, color 0.16s;
+    cursor: pointer;
+    &:hover:not(.is-active) {
+      background: #f1f5f9;
+      color: #2563eb;
+    }
+    &.is-active {
+      background: #2563eb;
+      color: #fff;
+      font-weight: 600;
     }
   }
   </style>

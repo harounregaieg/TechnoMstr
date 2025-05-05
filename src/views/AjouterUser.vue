@@ -6,7 +6,7 @@
   <div class="users-view">
     <section class="main-content">
       <div class="header-actions">
-        <h1 class="page-title">Ajouter Utilisateur</h1>
+        <h1 class="page-title">{{ isEditing ? 'Modifier Utilisateur' : 'Ajouter Utilisateur' }}</h1>
         <button class="back-button" @click="goBack">
           <span class="material-icons">arrow_back</span>
           Retour
@@ -28,7 +28,7 @@
             <option value="user">User</option>
             <option value="technicien">Technicien</option>
           </FormField>
-          <FormField label="Departement" type="departement" v-model="formData.department" :error="errors.department" />
+          <FormField label="Departement" type="text" v-model="formData.department" :error="errors.department" :disabled="true" />
         </FormRow>
 
         <FormRow>
@@ -38,12 +38,14 @@
             type="password"
             v-model="formData.password"
             :error="errors.password"
+            :placeholder="isEditing ? 'Laisser vide pour ne pas changer' : ''"
+            :required="!isEditing"
           />
         </FormRow>
 
         <div class="form-actions">
           <button type="submit" class="submit-button" :disabled="isSubmitting">
-            {{ isSubmitting ? 'En cours...' : 'Ajouter' }}
+            {{ isSubmitting ? 'En cours...' : (isEditing ? 'Mettre à jour' : 'Ajouter') }}
           </button>
         </div>
       </form>
@@ -54,8 +56,8 @@
 <script>
 import FormField from "../components/AddUserComponents/FormField.vue";
 import FormRow from "../components/AddUserComponents/FormRow.vue";
-import { useRouter } from 'vue-router';
-import axios from 'axios';
+import { useRouter, useRoute } from 'vue-router';
+import { userApi } from "../services/userApi";
 
 export default {
   name: "UserRegistrationForm",
@@ -63,15 +65,23 @@ export default {
     FormField,
     FormRow,
   },
+  props: {
+    id: {
+      type: [String, Number],
+      default: null
+    }
+  },
   setup() {
     const router = useRouter();
+    const route = useRoute();
     
     const goBack = () => {
       router.push('/users');
     };
 
     return {
-      goBack
+      goBack,
+      route
     };
   },
   data() {
@@ -88,6 +98,8 @@ export default {
       isSubmitting: false,
       errorMessage: "",
       successMessage: "",
+      isEditing: false,
+      currentUser: null,
       errors: {
         lastName: "",
         firstName: "",
@@ -98,7 +110,43 @@ export default {
       }
     };
   },
+  async created() {
+    // Fetch current user to get department
+    try {
+      this.currentUser = await userApi.getCurrentUser();
+      // Set department from current user
+      this.formData.department = this.currentUser.departement;
+    } catch (error) {
+      console.error("Error fetching current user:", error);
+    }
+    
+    // Check if we are in edit mode
+    const userId = this.id || this.$route.params.id;
+    if (userId) {
+      this.isEditing = true;
+      await this.fetchUserData(userId);
+    }
+  },
   methods: {
+    async fetchUserData(userId) {
+      try {
+        const userData = await userApi.getUserById(userId);
+        
+        // Map database fields to form fields
+        this.formData = {
+          id: userData.id,
+          lastName: userData.nom,
+          firstName: userData.prenom,
+          role: userData.roleuser,
+          department: userData.departement,
+          email: userData.email,
+          password: "", // Don't populate password
+        };
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        this.errorMessage = "Impossible de récupérer les données de l'utilisateur";
+      }
+    },
     validateForm() {
       let isValid = true;
       // Reset errors
@@ -134,10 +182,11 @@ export default {
         isValid = false;
       }
       
-      if (!this.formData.password) {
+      // Only validate password on create or if provided during edit
+      if (!this.isEditing && !this.formData.password) {
         this.errors.password = "Le mot de passe est requis";
         isValid = false;
-      } else if (this.formData.password.length < 6) {
+      } else if (this.formData.password && this.formData.password.length < 6) {
         this.errors.password = "Le mot de passe doit contenir au moins 6 caractères";
         isValid = false;
       }
@@ -161,42 +210,45 @@ export default {
       try {
         this.isSubmitting = true;
         
+        // Ensure we preserve the department set during creation
+        const currentDepartment = this.formData.department;
+        
         // Map frontend field names to database field names
         const userData = {
           nom: this.formData.lastName,
           prenom: this.formData.firstName,
           email: this.formData.email,
-          motdepasse: this.formData.password,
           roleuser: this.formData.role,
           statut: 'active', // Default status for new users
-          departement: this.formData.department
+          departement: currentDepartment // Ensure we use the original department value
         };
         
-        // Send data to your API
-        const API_URL = 'http://localhost:3000/api';
-        const response = await axios.post(`${API_URL}/users`, userData);
+        // Only include password if it's set (for create) or changed (for edit)
+        if (this.formData.password) {
+          userData.motdepasse = this.formData.password;
+        }
         
-        console.log("User added successfully:", response.data);
-        this.successMessage = 'Utilisateur ajouté avec succès!';
+        let response;
         
-        // Clear form
-        this.formData = {
-          id: "",
-          lastName: "",
-          firstName: "",
-          role: "",
-          department: "",
-          email: "",
-          password: "",
-        };
+        if (this.isEditing) {
+          // Update existing user
+          response = await userApi.updateUser(this.formData.id, userData);
+          this.successMessage = 'Utilisateur mis à jour avec succès!';
+        } else {
+          // Create new user
+          response = await userApi.createUser(userData);
+          this.successMessage = 'Utilisateur ajouté avec succès!';
+        }
+        
+        console.log("User operation successful:", response);
         
         // Navigate after a short delay to show success message
         setTimeout(() => {
           this.$router.push('/users');
         }, 1500);
       } catch (err) {
-        console.error("Error adding user:", err);
-        this.errorMessage = err.response?.data?.error || 'Failed to add user';
+        console.error("Error handling user:", err);
+        this.errorMessage = err.response?.data?.error || 'Failed to process user';
       } finally {
         this.isSubmitting = false;
       }

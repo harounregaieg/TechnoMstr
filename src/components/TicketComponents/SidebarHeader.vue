@@ -2,7 +2,8 @@
     <header class="header">
       <h1 class="title">Tickets</h1>
       <button class="new-ticket" @click="handleAddTicket">
-        + New Ticket</button>
+        <i class="ti ti-plus"></i> New Ticket
+      </button>
     </header>
   </template>
   
@@ -23,25 +24,43 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 24px;
+    margin-bottom: 32px;
+    padding: 8px 0;
   }
   
   .title {
     font-family: "Poppins", sans-serif;
-    font-size: 24px;
-    color: #000;
+    font-size: 2rem;
+    color: #357abd;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin: 0;
   }
   
   .new-ticket {
-    padding: 10px 16px;
-    border: 1px solid #d0d5dd;
-    border-radius: 8px;
-    color: #344054;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 22px;
+    border: none;
+    border-radius: 999px;
+    color: #fff;
+    background: linear-gradient(90deg, #4a90e2 0%, #357abd 100%);
     font-family: "Inter", sans-serif;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 0.75rem;
+    font-weight: 600;
     cursor: pointer;
-    background-color: #fff;
+    box-shadow: 0 2px 8px rgba(74, 144, 226, 0.12);
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  
+  .new-ticket:hover {
+    background: linear-gradient(90deg, #357abd 0%, #4a90e2 100%);
+    box-shadow: 0 4px 16px rgba(74, 144, 226, 0.18);
+  }
+  
+  .new-ticket i {
+    font-size: 1.1em;
   }
   </style>
   

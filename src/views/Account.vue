@@ -1,115 +1,205 @@
 <template>
-  <main class="profile-container">
-    <div class="content-wrapper">
-      <ProfileHeader :user-data="userData" @edit="startEditing" />
-
-      <div class="stats-grid">
-        <StatsCard :value="userData.stats.projects" label="Projects" />
-        <StatsCard :value="userData.stats.teams" label="Teams" />
-        <StatsCard :value="userData.stats.reports" label="Direct Reports" />
+  <main class="profile-bg">
+    <div class="profile-center">
+      <div class="profile-card">
+        <ProfileHeader :user-data="userData" />
+        <div class="profile-details">
+          <div class="detail-section">
+            <h3>Contact Information</h3>
+            <div class="detail-item">
+              <span class="icon"><i class="fas fa-envelope"></i></span>
+              <span class="label">Email</span>
+              <span class="value">{{ userData.email }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="icon"><i class="fas fa-user-shield"></i></span>
+              <span class="label">Role</span>
+              <span class="value">{{ userData.roleuser }}</span>
+            </div>
+          </div>
+          <div class="detail-section">
+            <h3>Account Settings</h3>
+            <div class="detail-item">
+              <span class="icon"><i class="fas fa-sign-in-alt"></i></span>
+              <span class="label">Last Login</span>
+              <span class="value">{{ lastLogin }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="icon"><i class="fas fa-calendar-plus"></i></span>
+              <span class="label">Account Created</span>
+              <span class="value">{{ accountCreated }}</span>
+            </div>
+          </div>
+        </div>
       </div>
-
-      <AboutSection
-        :bio="userData.bio"
-        :is-editing="isEditing"
-        @save="saveBio"
-        @cancel="cancelEditing"
-      />
-
-      <SkillsSection :skills="userData.skills" />
     </div>
   </main>
 </template>
 
 <script setup>
-import { ref, reactive } from "vue";
+import { ref, reactive, onMounted } from "vue";
 import ProfileHeader from "../components/ProfileComponents/ProfileHeader.vue";
-import StatsCard from "../components/ProfileComponents/StatsCard.vue";
-import AboutSection from "../components/ProfileComponents/AboutSection.vue";
-import SkillsSection from "../components/ProfileComponents/SkillsSection.vue";
+import api from '../services/api';
 
-const isEditing = ref(false);
+const lastLogin = ref('Loading...');
+const accountCreated = ref('Loading...');
 
 const userData = reactive({
-  name: "User User",
-  role: "Admin",
-  email: "user.user@company.com",
-  location: "Entrprise 1",
-  bio: "About section.",
-  stats: {
-    projects: 127,
-    teams: 12,
-    reports: 8,
-  },
-  skills: [
-    "Product Strategy",
-    "Team Leadership",
-    "Agile/Scrum",
-    "User Research",
-    "Data Analysis",
-    "Stakeholder Management",
-  ],
+  prenom: "",
+  nom: "",
+  email: "",
+  roleuser: "",
 });
 
-const startEditing = () => {
-  isEditing.value = true;
+const formatDate = (dateString) => {
+  if (!dateString) return 'Not available';
+  const date = new Date(dateString);
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
 };
 
-const saveBio = (newBio) => {
-  userData.bio = newBio;
-  isEditing.value = false;
+const fetchUserData = async () => {
+  try {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const currentUser = JSON.parse(userStr);
+      userData.prenom = currentUser.prenom;
+      userData.nom = currentUser.nom;
+      userData.email = currentUser.email;
+      userData.roleuser = currentUser.roleuser;
+      
+      lastLogin.value = formatDate(currentUser.last_login || currentUser.lastLogin);
+      accountCreated.value = formatDate(currentUser.created_at || currentUser.createdAt);
+    }
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    lastLogin.value = 'Error loading date';
+    accountCreated.value = 'Error loading date';
+  }
 };
 
-const cancelEditing = () => {
-  isEditing.value = false;
-};
+onMounted(() => {
+  fetchUserData();
+});
 </script>
 
 <style lang="scss" scoped>
-@import url("https://fonts.googleapis.com/css2?family=Poppins&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap");
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
 
-/*.profile-container {
+.profile-bg {
+  min-height: 100vh;
+  background: linear-gradient(120deg, #eaf4fd 0%, #f8f9fa 100%);
   display: flex;
-  flex-direction: column;
-  width: 96%;
-  height: 89vh;
-  margin-left: calc(2rem + 32px);
-  background: rgba(255, 255, 255, 0.6);
-  font-family: "Poppins", sans-serif;
-  color: #454545;
-}*/
+  align-items: center;
+  justify-content: center;
+  font-family: 'Poppins', sans-serif;
+}
 
-.content-wrapper {
-  display: flex;
-  flex-direction: column;
-  max-width: 1200px;
+.profile-center {
   width: 100%;
+  max-width: 520px;
   margin: 0 auto;
-  padding: 32px 24px;
-  gap: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
 }
 
-.stats-grid {
+.profile-card {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(74, 144, 226, 0.10);
+  overflow: hidden;
+  width: 100%;
+  margin: 32px 0;
+  transition: box-shadow 0.2s;
+  position: relative;
+}
+
+.profile-card:hover {
+  box-shadow: 0 12px 40px rgba(74, 144, 226, 0.16);
+}
+
+.profile-details {
+  padding: 32px 28px 28px 28px;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
+  grid-template-columns: 1fr;
+  gap: 28px;
+  background: #f8f9fa;
 }
 
+.detail-section {
+  background: #fff;
+  padding: 22px 20px 16px 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(74, 144, 226, 0.04);
+  margin-bottom: 0;
 
-
-.profile-page {
-  width: 102%;
-  padding: 1rem;
-  padding-left: calc(2rem + 48px);
-  box-sizing: border-box;
-  transition: padding-left 0.2s ease-out;
-
-  &.sidebar-expanded {
-    padding-left: calc(var(--sidebar-width) + 1rem);
+  h3 {
+    margin: 0 0 18px 0;
+    color: #357abd;
+    font-size: 1.15rem;
+    font-weight: 600;
+    border-bottom: 1.5px solid #eaf4fd;
+    padding-bottom: 7px;
+    letter-spacing: 0.2px;
   }
-  
-  h1 {
-    margin-bottom: 1rem;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f3f5;
+  font-size: 1rem;
+  transition: background 0.15s;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  .icon {
+    color: #4a90e2;
+    font-size: 1.1em;
+    width: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .label {
+    color: #6c757d;
+    font-weight: 500;
+    min-width: 90px;
+  }
+  .value {
+    color: #2c3e50;
+    font-weight: 400;
+    margin-left: auto;
+    text-align: right;
+  }
+}
+
+@media (max-width: 768px) {
+  .profile-center {
+    min-height: unset;
+    padding: 16px 0;
+  }
+  .profile-card {
+    margin: 16px 0;
+  }
+  .profile-details {
+    padding: 18px 8px 12px 8px;
+  }
+  .detail-section {
+    padding: 14px 8px 10px 8px;
   }
 }
 </style>

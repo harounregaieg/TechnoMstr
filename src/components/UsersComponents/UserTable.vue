@@ -1,46 +1,28 @@
 <template>
   <div class="table-container">
-    <div class="table-header">
+    <div class="table-header-row">
       <h2 class="table-header__title">Liste d'Utilisateurs</h2>
-      <button class="table-header__button" @click="handleAddUser">
-        Ajouter Utilisateur +
-      </button>
-    </div>
-
-    <div class="table-search">
-      <input
-        v-model="searchQuery"
-        type="search"
-        placeholder="Search..."
-        @input="handleSearch"
-      />
-    </div>
-
-    <div class="sector-filter">
-      <div v-for="sector in sectors" :key="sector">
-        <span class="sector-label">{{ sector }} </span>
-        <button class="sector-filter__button" @click="filterBySector(sector)">
+      <div class="table-header-actions">
+        <div class="table-search">
+          <input
+            v-model="searchQuery"
+            type="search"
+            placeholder="Rechercher..."
+            @input="handleSearch"
+          />
+        </div>
+        <button class="table-header__button" @click="handleAddUser">
+          + Ajouter Utilisateur
         </button>
       </div>
     </div>
-
     <div class="table-wrapper">
       <table class="table">
         <thead>
           <tr>
-            <th
-              v-for="column in columns" 
-              :key="column.key" 
-              @click="sortBy(column.key)"
-            >
+            <th v-for="column in columns" :key="column.key" @click="sortBy(column.key)">
               {{ column.label }}
-              <span 
-                v-if="column.sortable" 
-                class="sort-icon" 
-                :class="{desc: sortField === column.key && sortDirection === 'desc'}"
-              > 
-                ⌃ 
-              </span>
+              <span v-if="column.sortable" class="sort-icon" :class="{desc: sortField === column.key && sortDirection === 'desc'}">⌃</span>
             </th>
           </tr>
         </thead>
@@ -55,13 +37,17 @@
             </td>
             <td>{{ user.departement }}</td>
             <td>
-              <DropDown @edit="handleEdit(user)" @delete="handleDelete(user)" />
+              <DropDown 
+                @edit="handleEdit(user)" 
+                @delete="handleDelete(user)"
+                @toggle-status="handleStatusToggle(user)"
+                :is-active="user.statut === 'active'"
+              />
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-
     <TablePagination
       :current-page="currentPage"
       :total-pages="totalPages"
@@ -116,20 +102,13 @@ const columns = [
   { key: "actions" }
 ];
 
-// For sector filter - extract unique departments/sectors from users
-const sectors = computed(() => {
-  const uniqueSectors = new Set(users.value.map(user => user.department));
-  return Array.from(uniqueSectors);
-});
-
 const searchQuery = ref("");
 const sortField = ref(null);
 const sortDirection = ref("asc");
 const currentPage = ref(1);
 const itemsPerPage = 10;
-const selectedSector = ref(null);
 
-// Filter users based on search query and selected sector
+// Filter users based on search query
 const filteredUsers = computed(() => {
   let filtered = users.value;
   
@@ -145,11 +124,6 @@ const filteredUsers = computed(() => {
         (user.departement?.toLowerCase().includes(query) || false)
     );
     });
-  }
-  
-  // Filter by sector
-  if (selectedSector.value) {
-    filtered = filtered.filter(user => user.department === selectedSector.value);
   }
   
   return filtered;
@@ -205,11 +179,6 @@ const sortBy = (field) => {
   }
 };
 
-const filterBySector = (sector) => {
-  selectedSector.value = selectedSector.value === sector ? null : sector;
-  currentPage.value = 1; // Reset to first page when filtering
-};
-
 const handleSearch = () => {
   currentPage.value = 1; // Reset to first page when searching
 };
@@ -229,156 +198,155 @@ const handleDelete = async (user) => {
     }
   }
 };
+
+const handleStatusToggle = async (user) => {
+  try {
+    console.log('Attempting to toggle status for user:', user);
+    const response = await userApi.toggleUserStatus(user.id);
+    console.log('Toggle status response:', response);
+    // Refresh the user list after status change
+    await fetchUsers();
+  } catch (error) {
+    console.error('Error toggling user status:', error);
+    console.error('Error details:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    alert('Failed to update user status: ' + (error.response?.data?.error || error.message));
+  }
+};
 </script>
 
 <style lang="scss" scoped>
-// Variables
-$border-color: #e5e7eb;
-$text-primary: #111827;
-$text-secondary: #6b7280;
-$primary-color: #2563eb;
-$hover-bg: #f9fafb;
+$table-radius: 12px;
+$table-header-bg: #fff;
+$table-header-border: #e5e7eb;
+$table-row-hover: #f1f5f9;
+$table-border: #e5e7eb;
+$table-title: #1e293b;
+$table-subtle: #64748b;
+$table-action: #2563eb;
+$table-action-hover: #1d4ed8;
 
 .table-container {
   width: 100%;
-  max-width: 100%;
-  margin: 0;
-  padding: 1.5rem;
-  background: white;
-  border-radius: .75rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow-x: hidden;
+  max-width: 1200px;
+  margin: 2.5rem auto 0 auto;
+  padding: 0.5rem 1.5rem 1.5rem 1.5rem;
+  background: #fff;
+  border-radius: $table-radius;
+  box-shadow: 0 2px 12px 0 rgba(16, 30, 54, 0.08);
+  overflow-x: auto;
   box-sizing: border-box;
 }
 
-.table-header {
+.table-header-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: .25rem;
-  border-bottom: 1px solid $border-color;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0 1rem 0;
+  border-bottom: 1px solid $table-header-border;
+}
 
-  &__title {
-    font-size: 1.25rem;
-    font-weight: 500;
-    color: $text-primary;
-  }
+.table-header__title {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: $table-title;
+  margin: 0;
+}
 
-  &__button {
-    padding: .5rem 1rem;
-    background: white;
-    border: 1px solid $border-color;
-    border-radius: 0.5rem;
-    color: $text-secondary;
-    font-weight: 500;
-    transition: all 0.2s ease;
+.table-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
 
-    &:hover {
-      border-color: darken($border-color, 10%);
-      background: $hover-bg;
-    }
+.table-header__button {
+  padding: 0.45rem 1.1rem;
+  background: $table-action;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.18s;
+  box-shadow: 0 1px 2px rgba(37,99,235,0.07);
+  &:hover {
+    background: $table-action-hover;
   }
 }
 
 .table-search {
-  padding: 0.5rem 0;
-
   input {
-    width: 100%;
-    max-width: 300px;
-    padding: 0.5rem 1rem;
-    border: 1px solid $border-color;
-    border-radius: 0.5rem;
-    background: $hover-bg;
-
+    width: 220px;
+    padding: 0.45rem 1rem;
+    border: 1px solid $table-header-border;
+    border-radius: 6px;
+    background: #f8fafc;
+    font-size: 1rem;
+    color: $table-title;
+    transition: border 0.18s;
     &:focus {
       outline: none;
-      border-color: $primary-color;
-      box-shadow: 0 0 0 2px rgba($primary-color, 0.1);
+      border-color: $table-action;
+      background: #fff;
     }
   }
 }
 
-.sector-filter {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: .25rem;
-  flex-wrap: wrap;
-
-  .sector-label {
-    font-size: .875rem;
-    color: $text-secondary;
-  }
-
-  &__button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    font-size: .75rem;
-  }
-}
-
 .table-wrapper {
+  margin-top: 0.5rem;
   overflow-x: auto;
   width: 100%;
-  max-height: calc(13 * 2.5rem);
+  max-height: 60vh;
   overflow-y: auto;
 }
 
 .table {
   width: 100%;
-  min-width: 700px; /* Ensure table doesn't get too compressed */
-  border-collapse: collapse;
-
+  min-width: 900px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.97rem;
   th, td {
-    height: 1.5rem;
-    padding: .25rem .5rem;
+    padding: 0.65rem 0.7rem;
     text-align: left;
-    cursor: default;
-    border-bottom: 1px solid $border-color;
+    border-bottom: 1px solid $table-border;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: middle;
   }
-
-  th:nth-child(1), td:nth-child(1) { width: 8%; } // Name
-  th:nth-child(2), td:nth-child(2) { width: 8%; } // Lastname
-  th:nth-child(3), td:nth-child(3) { width: 7%; } // Type
-  th:nth-child(4), td:nth-child(4) { width: 10%; } // Email
-  th:nth-child(5), td:nth-child(5) { width: 7%; } // Status
-  th:nth-child(6), td:nth-child(6) { width: 10%; } // Department
-  th:nth-child(7), td:nth-child(7) { width: 1%; } // Actions
-
   th {
-    background: $hover-bg;
+    background: $table-header-bg;
     font-weight: 500;
-    color: $text-secondary;
+    color: $table-subtle;
     cursor: pointer;
     user-select: none;
-
-    &:hover {
-      background: darken($hover-bg, 2%);
-    }
-
     .sort-icon {
       display: inline-block;
-      margin-left: 0.25rem;
+      margin-left: 0.18rem;
+      font-size: 1.1em;
       transition: transform 0.2s ease;
-
       &.desc {
         transform: rotate(180deg);
       }
     }
   }
-
-  tr:hover {
-    background: $hover-bg;
+  tr {
+    transition: background 0.15s;
+    &:hover {
+      background: $table-row-hover;
+    }
   }
-
   td {
-    color: $text-primary;
+    color: $table-title;
+  }
+  th:last-child, td:last-child {
+    text-align: center;
   }
 }
 </style>

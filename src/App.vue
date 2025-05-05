@@ -4,18 +4,40 @@
     <div :class="{ 'content': !isLoginPage, 'full-content': isLoginPage }">
       <router-view />
     </div>
+    <NotificationPoller v-if="!isLoginPage && hasPermission" />
   </main>
 </template>
 
 
 
 <script setup>
-  import { computed } from 'vue'
+  import { computed, ref, onMounted } from 'vue'
   import { useRoute } from 'vue-router'
   import Sidebar from './components/Sidebar.vue';
+  import NotificationPoller from './components/NotificationPoller.vue';
 
   const route = useRoute()
   const isLoginPage = computed(() => route.name === 'Login')
+  const currentUser = ref(null)
+  const hasPermission = computed(() => {
+    if (!currentUser.value) return false
+    
+    const role = currentUser.value.roleuser
+    // Check if user has permission to see notifications
+    return ['superadmin', 'admin', 'technicien'].includes(role)
+  })
+  
+  onMounted(() => {
+    // Get user from localStorage
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      try {
+        currentUser.value = JSON.parse(userStr)
+      } catch (e) {
+        console.error('Error parsing user data:', e)
+      }
+    }
+  })
 </script>
 
 

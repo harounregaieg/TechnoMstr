@@ -1,0 +1,1 @@
+10.0.0.205,{"type":"ZebraPrinter","status":"Online","lastUpdated":"2025-04-14T11:47:58.667Z","serialNumber":"D0J190106053","printerStatus":"READY","model":"","linkOsVersion":"6.4","firmware":"V84.20.23Z <-","hardwareId":"6.5.0 0.770"}

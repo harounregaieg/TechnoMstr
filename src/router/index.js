@@ -44,12 +44,26 @@ const router = createRouter({
             component: () => import('../views/AjouterTicket.vue'),
         },
         {
+            path:'/ajouter-equipement',
+            component: () => import('../views/AjouterEquipement.vue'),
+        },
+        {
             path:'/ajouter-user',
             component: () => import('../views/AjouterUser.vue'),
         },
         {
+            path:'/modifier-user/:id',
+            component: () => import('../views/AjouterUser.vue'),
+            props: true,
+        },
+        {
             path:'/ticket/:id',
             name: 'TicketDetails',
+            component: () => import('../views/TicketDetails.vue'),
+        },
+        {
+            path:'/envoyer-commande',
+            component: () => import('../components/EquipementComponents/SendCommand.vue'),
         },
     ]
 })

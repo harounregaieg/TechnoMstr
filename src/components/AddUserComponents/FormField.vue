@@ -7,10 +7,15 @@
         :value="modelValue"
         @input="$emit('update:modelValue', $event.target.value)"
         class="input-field"
+        :class="{ 'disabled': disabled }"
         :aria-label="label"
+        :placeholder="placeholder"
+        :required="required"
+        :disabled="disabled"
       >
         <slot></slot>
       </component>
+      <p v-if="error" class="field-error">{{ error }}</p>
     </div>
   </template>
   
@@ -30,6 +35,22 @@
         type: [String, Number],
         default: "",
       },
+      error: {
+        type: String,
+        default: "",
+      },
+      placeholder: {
+        type: String,
+        default: "",
+      },
+      required: {
+        type: Boolean,
+        default: false
+      },
+      disabled: {
+        type: Boolean,
+        default: false
+      }
     },
     computed: {
       inputType() {
@@ -42,6 +63,7 @@
   <style scoped>
   .form-field {
     flex: 1;
+    margin-bottom: 16px;
   }
   
   .field-label {
@@ -58,6 +80,27 @@
     border-radius: 6px;
     font-size: 14px;
     transition: all 0.2s;
+  }
+  
+  .input-field:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+
+  .input-field.disabled {
+    background-color: #f3f4f6;
+    color: #6b7280;
+    border-color: #d1d5db;
+    cursor: not-allowed;
+    pointer-events: none;
+    user-select: none;
+  }
+  
+  .field-error {
+    color: #dc2626;
+    font-size: 12px;
+    margin-top: 4px;
   }
   </style>
   

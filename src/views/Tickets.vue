@@ -11,7 +11,7 @@
   <div class="app-container">
     <nav class="sidebar">
       <SidebarHeader />
-      <SearchBox @search ="handleSearch" />
+      <SearchBox @search="handleSearch" />
       <NavigationMenu @filter-change="handleFilterChange" />
     </nav>
     <main class="main-content">
@@ -19,6 +19,7 @@
       <TicketTable 
         :searchQuery="searchQuery"
         :status-filter="currentFilter"
+        :ticket-type="ticketType"
       />
     </main>
     
@@ -34,11 +35,18 @@ import NavigationMenu from "../components/TicketComponents/NavigationMenu.vue";
 import MainHeader from "../components/TicketComponents/MainHeader.vue";
 import TicketTable from "../components/TicketComponents/TicketTable.vue";
 
-const  searchQuery = ref('');
+const searchQuery = ref('');
 const currentFilter = ref('');
+const ticketType = ref('');
 
-const handleFilterChange = (status) => {
-  currentFilter.value = status;
+const handleFilterChange = (filter) => {
+  if (filter === 'sent' || filter === 'received') {
+    ticketType.value = filter;
+    currentFilter.value = '';
+  } else {
+    ticketType.value = '';
+    currentFilter.value = filter;
+  }
 };
 
 const handleSearch = (query) => {

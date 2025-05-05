@@ -22,7 +22,13 @@
             </svg>
             <span>Edit</span>
           </button>
-
+          <!-- Status toggle option -->
+          <button class="dropdown-item" @click="handleStatusToggle">
+            <svg class="item-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>{{ props.isActive ? 'Deactivate' : 'Activate' }}</span>
+          </button>
           <!-- Delete option -->
           <button class="dropdown-item dropdown-item--delete" @click="handleDelete">
             <svg class="item-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -40,6 +46,14 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 
+// Props
+const props = defineProps({
+  isActive: {
+    type: Boolean,
+    default: true
+  }
+});
+
 // Refs
 const isOpen = ref(false);
 const isMenuAbove = ref(false);
@@ -50,7 +64,7 @@ const menuPosition = ref({
 });
 
 // Define emits
-const emit = defineEmits(['edit', 'delete']);
+const emit = defineEmits(['edit', 'delete', 'toggle-status']);
 
 // Toggle dropdown visibility
 const toggleDropdown = () => {
@@ -85,6 +99,12 @@ const updateMenuPosition = () => {
 // Handle edit action
 const handleEdit = () => {
   emit('edit');
+  isOpen.value = false;
+};
+
+// Handle status toggle
+const handleStatusToggle = () => {
+  emit('toggle-status');
   isOpen.value = false;
 };
 
@@ -125,23 +145,25 @@ onUnmounted(() => {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 8px;
+  padding: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #64748b;
-  transition: background-color 0.2s, color 0.2s;
+  transition: background-color 0.18s, color 0.18s;
+  box-shadow: none;
+  font-size: 1.1em;
 }
 
 .dropdown-toggle:hover {
-  background-color: #f8f9fa;
-  color: #1e293b;
+  background-color: #f1f5f9;
+  color: #2563eb;
 }
 
 .dots-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .dropdown-menu-wrapper {
@@ -150,12 +172,13 @@ onUnmounted(() => {
 }
 
 .dropdown-menu {
-  min-width: 160px;
-  background: white;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  min-width: 130px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px 0 rgba(16, 30, 54, 0.13);
   overflow: hidden;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
+  padding: 0.25rem 0;
 }
 
 .dropdown-menu--top {
@@ -166,19 +189,21 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 10px 12px;
+  padding: 7px 14px;
   border: none;
   background: none;
   text-align: left;
   cursor: pointer;
-  font-size: 14px;
-  color: #4b5563;
-  transition: background-color 0.2s;
-  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+  transition: background-color 0.18s, color 0.18s;
+  gap: 7px;
+  border-radius: 0;
 }
 
 .dropdown-item:hover {
-  background-color: #f3f4f6;
+  background-color: #f1f5f9;
+  color: #2563eb;
 }
 
 .dropdown-item--delete {
@@ -187,11 +212,12 @@ onUnmounted(() => {
 
 .dropdown-item--delete:hover {
   background-color: #fef2f2;
+  color: #b91c1c;
 }
 
 .item-icon {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 </style>

@@ -1,0 +1,8 @@
+when restarting pc/app, run adb connect <DEVICE_IP>:5555 to re-establih connection to pda's.
+
+1)adb start-server
+2)adb connect <DEVICE_IP>:5555
+
+1)conncet via usb
+2)adb -s <SERIAL NUMBER> tcpip 5555
+3)adb connect <IP ADDRESS>:5555

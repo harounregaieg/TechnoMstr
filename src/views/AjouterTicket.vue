@@ -14,23 +14,39 @@
         </div>
         <form @submit.prevent="handleSubmit" class="form-container">
          
+          <div class="ticket-type-selector">
+            <label class="type-label">Type de Ticket:</label>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="ticketType" value="type1" v-model="formData.ticketType" @change="filterUsers">
+                Type 1 (Même Département)
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="ticketType" value="type2" v-model="formData.ticketType" @change="filterUsers">
+                Type 2 (Technocode)
+              </label>
+            </div>
+          </div>
   
           <FormRow>
             <FormField label="Sujet" v-model="formData.sujet" />
-            <FormField label="Equipement I.D" v-model="formData.equipementid" />
+            <FormField label="Equipement Serial Number" v-model="formData.equipementserialnumber" />
           </FormRow>
   
           <FormRow>
             <FormField label="Priority" type="select" v-model="formData.priority">
               <option value="" hidden>Select a priority</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
             </FormField>
             <FormField
               label="Responsable" type="select" v-model="formData.responsable"
             >
-              <option value="" hidden >Sélectionnez un responsable</option>
+              <option value="" hidden>Sélectionnez un responsable</option>
+              <option v-for="user in filteredUsers" :key="user.id" :value="user.id">
+                {{ user.prenom }} {{ user.nom }} - {{ user.departement }}
+              </option>
             </FormField>
           </FormRow>
 
@@ -43,7 +59,7 @@
           </FormRow>
   
           <div class="form-actions">
-            <button type="submit" class="submit-button">Envoyer</button>
+            <button type="submit" class="submit-button">Créer</button>
           </div>
         </form>
       </section>
@@ -54,9 +70,10 @@
   import FormField from "../components/AddUserComponents/FormField.vue";
   import FormRow from "../components/AddUserComponents/FormRow.vue";
   import { useRouter } from 'vue-router';
+  import { userApi } from "../services/userApi.js";
   
   export default {
-    name: "UserRegistrationForm",
+    name: "TicketRegistrationForm",
     components: {
       FormField,
       FormRow,
@@ -74,21 +91,127 @@
     },
     data() {
       return {
+        users: [],
+        filteredUsers: [],
+        currentUser: null,
         formData: {
-          id: "",
-          lastName: "",
-          firstName: "",
-          role: "",
-          department: "",
-          email: "",
-          password: "",
+          sujet: "",
+          equipementserialnumber: "",
+          priority: "",
+          responsable: "",
+          replacepiece: "",
+          description: "",
+          ticketType: "type1", // Default to type1
         },
       };
     },
+    async mounted() {
+      try {
+        // Get current user from localStorage
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          this.currentUser = JSON.parse(userStr);
+          console.log("Current user from localStorage:", this.currentUser);
+        } else {
+          console.error("No user found in localStorage");
+          // Redirect to login if no user is found
+          this.router.push('/login');
+          return;
+        }
+
+        // Get serial number from URL query parameters
+        const serialNumber = this.$route.query.serialnumber;
+        if (serialNumber) {
+          this.formData.equipementserialnumber = serialNumber;
+          console.log("Setting serial number from URL:", serialNumber);
+        }
+
+        // Fetch users from the API
+        this.users = await userApi.getUsers();
+        console.log("Fetched users:", this.users);
+        
+        // Initial filtering of users
+        this.filterUsers();
+      } catch (error) {
+        console.error("Failed to load data:", error);
+      }
+    },
     methods: {
-      handleSubmit() {
-        console.log("Form submitted:", this.formData);
-        this.$router.push('/tickets');
+      filterUsers() {
+        if (!this.currentUser || !this.users.length) {
+          this.filteredUsers = [];
+          return;
+        }
+        
+        if (this.formData.ticketType === "type1") {
+          // Filter users from the same department as the current user
+          this.filteredUsers = this.users.filter(user => 
+            user.departement === this.currentUser.departement &&
+            user.id !== this.currentUser.id  // Exclude current user from the list
+          );
+          console.log("Filtered users (same department):", this.filteredUsers);
+        } else if (this.formData.ticketType === "type2") {
+          // Filter users from Technocode department (case-insensitive)
+          this.filteredUsers = this.users.filter(user => 
+            user.departement.toLowerCase() === "technocode"
+          );
+          console.log("Filtered users (Technocode):", this.filteredUsers);
+        }
+      },
+      async handleSubmit() {
+        try {
+          // Validate required fields
+          if (!this.formData.sujet || !this.formData.equipementserialnumber || !this.formData.priority || !this.formData.responsable) {
+            console.log('Form validation failed:', {
+              sujet: !!this.formData.sujet,
+              serialnumber: !!this.formData.equipementserialnumber,
+              priority: !!this.formData.priority,
+              responsable: !!this.formData.responsable
+            });
+            alert('Please fill in all required fields');
+            return;
+          }
+
+          // Create ticket data
+          const ticketData = {
+            sujet: this.formData.sujet,
+            serialnumber: this.formData.equipementserialnumber,
+            agent: parseInt(this.formData.responsable),
+            requester: this.currentUser.id,
+            priority: this.formData.priority,
+            piecesaremplacer: this.formData.replacepiece || '',
+            description: this.formData.description || ''
+          };
+
+          console.log('Submitting ticket data:', ticketData);
+
+          // Send ticket to backend
+          const response = await fetch('http://localhost:3000/api/tickets', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(ticketData)
+          });
+
+          console.log('Response status:', response.status);
+          const responseData = await response.json();
+          console.log('Response data:', responseData);
+
+          if (!response.ok) {
+            throw new Error(`Failed to create ticket: ${responseData.error || 'Unknown error'}`);
+          }
+
+          // Navigate back to tickets page on success
+          this.$router.push('/tickets');
+        } catch (error) {
+          console.error('Detailed error creating ticket:', {
+            message: error.message,
+            stack: error.stack,
+            formData: this.formData
+          });
+          alert(`Failed to create ticket: ${error.message}`);
+        }
       },
     },
   };
@@ -108,6 +231,39 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 2rem;
+  }
+  
+  .ticket-type-selector {
+    margin-bottom: 1.5rem;
+    border: 1px solid #e5e7eb;
+    padding: 1rem;
+    border-radius: 6px;
+    background-color: #f9fafb;
+  }
+  
+  .type-label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+    color: #374151;
+  }
+  
+  .radio-group {
+    display: flex;
+    gap: 1.5rem;
+  }
+  
+  .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #4b5563;
+  }
+  
+  .radio-label input {
+    cursor: pointer;
   }
   
   .back-button {
@@ -170,6 +326,28 @@
   
   .submit-button:hover {
     background-color: #1d4ed8;
+  }
+  
+  .form-container select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background-color: white;
+    font-size: 14px;
+    color: #1f2937;
+  }
+  
+  .form-container select option {
+    padding: 8px;
+    font-size: 14px;
+    color: #1f2937;
+    background-color: white;
+  }
+  
+  .form-container select option:hover {
+    background-color: #f3f4f6;
+    cursor: pointer;
   }
   
   @media (max-width: 640px) {

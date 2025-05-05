@@ -1,59 +1,61 @@
 <template>
   <main class="dashboard-login">
-    <div class="logo">
-      <img src="../assets/full-logo-horizontal.webp" alt="Company Logo">
-    </div>
-    <div class="login-container">
-      <form @submit.prevent="handleSubmit" class="login-form-container">
-        <EmailInput 
-          id="email"
-          label="E-MAIL"
-          :icon-src="'https://cdn.builder.io/api/v1/image/assets/11ca9f5aa3e84ca99e47336ecb81adba/57c615065e7588efe8142e4aa4b035def68b598d6c0de255ad7a6478d883cb5d?placeholderIfAbsent=true'"
-          v-model="email"
-          :error="emailError"
-
-        />
-        
-        <FormInput
-          id="password"
-          label="MOT DE PASSE"
-          type="password"
-          v-model="password"
-           :icon-src="'https://cdn.builder.io/api/v1/image/assets/11ca9f5aa3e84ca99e47336ecb81adba/bcf115377daebb36ffec05544b8347b5f0a7d3cc8a63a28e5329761bb4156f71?placeholderIfAbsent=true'"
-          :error="passwordError"
-          class="password-input"
-        />
-        
-        <LoginButton 
-          :disabled="isLoading"
-          @click="handleSubmit"
-        >
-          {{ isLoading ? 'Connexion...' : 'Connecter' }}
-        </LoginButton>
-        
-        <ForgotPassword 
-          @click="handleForgotPassword"
-        />
-        
-        <!-- Error Message -->
-        <div v-if="generalError" class="error-message">
-          {{ generalError }}
-        </div>
-      </form>
+    <div class="login-wrapper">
+      <div class="logo">
+        <img src="../assets/full-logo-horizontal.webp" alt="Company Logo">
+      </div>
+      <div class="login-container">
+        <form @submit.prevent="handleSubmit" class="login-form-container">
+          <h2 class="welcome-text">Bienvenue</h2>
+          <p class="subtitle">Connectez-vous pour accéder à votre compte</p>
+          
+          <EmailInput 
+            id="email"
+            label="E-MAIL"
+            :icon-src="'https://cdn.builder.io/api/v1/image/assets/11ca9f5aa3e84ca99e47336ecb81adba/57c615065e7588efe8142e4aa4b035def68b598d6c0de255ad7a6478d883cb5d?placeholderIfAbsent=true'"
+            v-model="email"
+            :error="emailError"
+          />
+          
+          <FormInput
+            id="password"
+            label="MOT DE PASSE"
+            type="password"
+            v-model="password"
+            :icon-src="'https://cdn.builder.io/api/v1/image/assets/11ca9f5aa3e84ca99e47336ecb81adba/bcf115377daebb36ffec05544b8347b5f0a7d3cc8a63a28e5329761bb4156f71?placeholderIfAbsent=true'"
+            :error="passwordError"
+            class="password-input"
+          />
+          
+          <LoginButton 
+            :disabled="isLoading"
+            @click="handleSubmit"
+          >
+            {{ isLoading ? 'Connexion...' : 'Connecter' }}
+          </LoginButton>
+          
+          <ForgotPassword 
+            @click="handleForgotPassword"
+          />
+          
+          <div v-if="generalError" class="error-message">
+            {{ generalError }}
+          </div>
+        </form>
+      </div>
     </div>
   </main>
 </template>
 
 <script>
-import axios from 'axios';
-import { ref } from 'vue';
+import { ref, reactive } from 'vue';
 import { useRouter } from 'vue-router';
+import api from '../services/api'; // Import our api service
 
 // Import your custom components
 import EmailInput from '../components/LoginComponents/EmailInput.vue';
 import FormInput from '../components/LoginComponents/FormInput.vue';
 import LoginButton from '../components/LoginComponents/LoginButton.vue';
-import ForgotPassword from '../components/LoginComponents/ForgotPassword.vue';
 
 export default {
   name: 'LoginDashboard',
@@ -61,7 +63,7 @@ export default {
     EmailInput,
     FormInput,
     LoginButton,
-    ForgotPassword
+    
   },
   setup() {
     const router = useRouter();
@@ -114,12 +116,21 @@ export default {
 
       // Set loading state
       this.isLoading = true;
+      console.log('Attempting login with:', { email: this.email });
 
       try {
-        const response = await axios.post('/api/auth/login', {
+        // Make the login request using our api service
+        console.log('Sending request to /api/auth/login');
+        
+        // Log the complete URL for debugging
+        console.log('Complete URL:', api.defaults.baseURL + '/api/auth/login');
+        
+        const response = await api.post('/api/auth/login', {
           email: this.email,
           password: this.password
         });
+
+        console.log('Login response:', response.data);
 
         // Store token and user info
         localStorage.setItem('token', response.data.token);
@@ -129,17 +140,23 @@ export default {
         this.router.push('/');
       } catch (error) {
         // Handle login errors
+        console.error('Login error details:', error);
+        
         if (error.response) {
           // The request was made and the server responded with a status code
+          console.error('Server response status:', error.response.status);
+          console.error('Server response headers:', error.response.headers);
+          console.error('Server response data:', error.response.data);
           this.generalError = error.response.data.message || 'Échec de la connexion';
         } else if (error.request) {
           // The request was made but no response was received
-          this.generalError = 'Aucune réponse du serveur';
+          console.error('No response received. Request details:', error.request);
+          this.generalError = 'Aucune réponse du serveur. Vérifiez que le serveur est en cours d\'exécution sur le port 3000.';
         } else {
           // Something happened in setting up the request
-          this.generalError = 'Erreur de connexion';
+          console.error('Request setup error:', error.message);
+          this.generalError = 'Erreur de connexion: ' + error.message;
         }
-        console.error('Login error:', error);
       } finally {
         // Reset loading state
         this.isLoading = false;
@@ -147,7 +164,7 @@ export default {
     },
     handleForgotPassword() {
       // Navigate to forgot password page or open modal
-      this.router.push('/forgot-password');
+      
     }
   }
 };
@@ -161,19 +178,13 @@ export default {
 }
 
 .dashboard-login {
-  background-color: rgb(67, 89, 155);
+  background: linear-gradient(135deg, rgb(67, 89, 155) 0%, rgb(45, 60, 105) 100%);
   display: flex;
   height: 100vh;
   width: 100vw;
   justify-content: center;
   align-items: center;
-  flex-direction: column;
-  overflow: hidden;
   font-family: Montserrat, -apple-system, Roboto, Helvetica, sans-serif;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 1);
-  font-weight: 300;
-  text-align: center;
   position: fixed;
   top: 0;
   left: 0;
@@ -181,8 +192,26 @@ export default {
   bottom: 0;
 }
 
+.login-wrapper {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  width: 90%;
+  max-width: 400px;
+  margin: 2rem;
+}
+
 .logo {
-  margin-top: 10rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.logo img {
+  max-width: 200px;
+  height: auto;
 }
 
 .login-container {
@@ -190,30 +219,56 @@ export default {
   flex-direction: column;
   position: relative;
   width: 100%;
-  height: 100%;
-  max-width: 1000px;
   align-items: center;
-  justify-content: center;
 }
 
 .login-form-container {
   position: relative;
   display: flex;
-  width: 300px;
-  max-width: 100%;
+  width: 100%;
   flex-direction: column;
   align-items: stretch;
-  z-index: 1;
+  gap: 1.5rem;
+}
+
+.welcome-text {
+  color: white;
+  font-size: 2rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
 }
 
 .password-input {
-  margin-top: 20px;
+  margin-top: 1rem;
 }
 
 .error-message {
-  color: #ff4136;
-  margin-top: 15px;
+  color: #ff6b6b;
+  margin-top: 1rem;
   text-align: center;
   font-size: 0.9em;
+  padding: 0.5rem;
+  background: rgba(255, 107, 107, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 107, 107, 0.2);
+}
+
+@media (max-width: 480px) {
+  .login-wrapper {
+    margin: 1rem;
+    padding: 1.5rem;
+  }
+  
+  .welcome-text {
+    font-size: 1.75rem;
+  }
 }
 </style>
