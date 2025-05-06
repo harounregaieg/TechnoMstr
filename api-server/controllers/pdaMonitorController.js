@@ -202,8 +202,7 @@ class PdaMonitorController {
                         await localPool.query(batteryQuery, [batteryInfo.typeCharge, batteryInfo.niveauCharge, idbatterie]);
                         
                         // Update storage status
-                        const storageQuery = `
-                            UPDATE etat_stockage
+                        const storageQuery = `                            UPDATE etat_stockage
                             SET stockageTotale = $1,
                                 stockageLibre = $2
                             WHERE idstockage = $3

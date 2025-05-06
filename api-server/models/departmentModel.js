@@ -11,14 +11,27 @@ class Department {
     const pool = useCloud ? cloudPool : localPool;
     const normalizedName = this.normalizeDepartmentName(nomdep);
     const query = 'SELECT * FROM departement WHERE LOWER(nomdep) = $1';
+    
+    try {
     const result = await pool.query(query, [normalizedName]);
     return result.rows[0];
+    } catch (error) {
+      // If this is a cloud operation and it failed, log and re-throw
+      if (useCloud) {
+        console.error('Error getting department by name from cloud database:', error);
+        throw error;
+      }
+      
+      // Otherwise re-throw for local operations
+      throw error;
+    }
   }
 
   static async create(nomdep, useCloud = false) {
     const pool = useCloud ? cloudPool : localPool;
     
     // First check if department exists (case-insensitive)
+    try {
     const existingDept = await this.getByName(nomdep, useCloud);
     if (existingDept) {
       return existingDept;
@@ -31,7 +44,6 @@ class Department {
       RETURNING *
     `;
     
-    try {
       const result = await pool.query(query, [nomdep]);
       return result.rows[0];
     } catch (error) {
@@ -39,6 +51,14 @@ class Department {
       if (error.code === '23505') {
         return await this.getByName(nomdep, useCloud);
       }
+      
+      // If this is a cloud operation and it failed, log and re-throw
+      if (useCloud) {
+        console.error('Error creating department in cloud database:', error);
+        throw error;
+      }
+      
+      // Otherwise re-throw for local operations
       throw error;
     }
   }
@@ -52,8 +72,20 @@ class Department {
       WHERE LOWER(nomdep) = $1
       RETURNING *
     `;
+    
+    try {
     const result = await pool.query(query, [normalizedName]);
     return result.rows[0];
+    } catch (error) {
+      // If this is a cloud operation and it failed, log and re-throw
+      if (useCloud) {
+        console.error('Error incrementing user count in cloud database:', error);
+        throw error;
+      }
+      
+      // Otherwise re-throw for local operations
+      throw error;
+    }
   }
 
   static async decrementUserCount(nomdep, useCloud = false) {
@@ -65,8 +97,20 @@ class Department {
       WHERE LOWER(nomdep) = $1
       RETURNING *
     `;
+    
+    try {
     const result = await pool.query(query, [normalizedName]);
     return result.rows[0];
+    } catch (error) {
+      // If this is a cloud operation and it failed, log and re-throw
+      if (useCloud) {
+        console.error('Error decrementing user count in cloud database:', error);
+        throw error;
+      }
+      
+      // Otherwise re-throw for local operations
+      throw error;
+    }
   }
 
   // Handle department operations in both databases
@@ -87,8 +131,9 @@ class Department {
         await this.decrementUserCount(userData.departement);
       }
 
-      // Handle cloud database
+      // Handle cloud database with error handling
       let cloudDepartment;
+      try {
       if (operation === 'create') {
         cloudDepartment = await this.getByName(userData.departement, true);
         if (cloudDepartment) {
@@ -98,6 +143,11 @@ class Department {
         }
       } else if (operation === 'delete') {
         await this.decrementUserCount(userData.departement, true);
+        }
+      } catch (cloudError) {
+        console.error('Error handling cloud department operation:', cloudError);
+        console.log('Continuing with local department operations only');
+        // No need to throw - continue with local operations only
       }
 
       return { localDepartment, cloudDepartment };

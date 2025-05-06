@@ -10,13 +10,17 @@ const localPool = new Pool({
   port: process.env.DB_PORT,
 });
 
-// Cloud database
+// Cloud database with short timeout
 const cloudPool = new Pool({
   user: process.env.CLOUD_DB_USER,
   host: process.env.CLOUD_DB_HOST,
   database: process.env.CLOUD_DB_DATABASE,
   password: process.env.CLOUD_DB_PASSWORD,
   port: process.env.CLOUD_DB_PORT,
+  // Add timeouts to prevent long waits
+  connectionTimeoutMillis: 3000, // 3 seconds connection timeout
+  query_timeout: 5000, // 5 seconds query timeout
+  idle_in_transaction_session_timeout: 5000 // 5 seconds idle timeout
 });
 
 module.exports = {

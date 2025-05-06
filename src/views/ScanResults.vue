@@ -240,7 +240,16 @@
   const addDevice = async (ip, device) => {
     try {
       addingDevices.value.add(ip);
-      await emit('add-printer', { ip, ...device });
+      let payload = { ip, ...device };
+      if (device.type === 'PDA') {
+        // Add debug output for serialnumber
+        console.log(`DEBUG: PDA serialnumber before setting: ${device.serialnumber || 'undefined/null'}`);
+        console.log(`DEBUG: Full PDA device object:`, device);
+        
+        payload.serialnumber = device.serialnumber || '';
+        console.log(`DEBUG: PDA payload serialnumber after setting: ${payload.serialnumber}`);
+      }
+      await emit('add-printer', payload);
     } finally {
       addingDevices.value.delete(ip);
     }

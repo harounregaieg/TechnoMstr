@@ -706,6 +706,7 @@ class EquipmentRepository {
       }
 
       // Delete from local database in correct order
+      let localDeleted = false;
       if (localEquipId) {
         await localPool.query('BEGIN');
         try {
@@ -719,10 +720,14 @@ class EquipmentRepository {
           // Finally delete equipment
           await localPool.query('DELETE FROM equipement WHERE idequipement = $1', [localEquipId]);
           await localPool.query('COMMIT');
+          localDeleted = true;
         } catch (error) {
           await localPool.query('ROLLBACK');
           throw new Error(`Error in local database: ${error.message}`);
         }
+      }
+      if (!localDeleted) {
+        throw new Error('Failed to delete equipment from local database');
       }
 
       // Try to delete from cloud database if we have a cloud equipment ID
@@ -731,7 +736,6 @@ class EquipmentRepository {
         try {
           // Start transaction with timeout
           await this.queryWithTimeout(cloudPool, 'BEGIN', [], 1000);
-          
           try {
             // Delete associated tickets first
             await this.queryWithTimeout(
@@ -740,7 +744,6 @@ class EquipmentRepository {
               [cloudSerialNumbers.rows.map(row => row.serialnumber)],
               1500
             );
-            
             // Delete actions
             await this.queryWithTimeout(
               cloudPool, 
@@ -748,7 +751,6 @@ class EquipmentRepository {
               [cloudEquipId],
               1500
             );
-            
             // Delete printer
             await this.queryWithTimeout(
               cloudPool, 
@@ -756,7 +758,6 @@ class EquipmentRepository {
               [cloudEquipId],
               1500
             );
-            
             // Finally delete equipment
             await this.queryWithTimeout(
               cloudPool, 
@@ -764,7 +765,6 @@ class EquipmentRepository {
               [cloudEquipId],
               1500
             );
-            
             await cloudPool.query('COMMIT');
             cloudDeleted = true;
           } catch (error) {
@@ -779,7 +779,7 @@ class EquipmentRepository {
       }
 
       return {
-        local: localEquipId ? true : false,
+        local: localDeleted,
         cloud: cloudDeleted
       };
     } catch (error) {
@@ -819,18 +819,20 @@ class EquipmentRepository {
     const ipAdresse = ipResult.rows[0].ipadresse;
 
     // Get the corresponding idequipement from cloud database
-    const getCloudEquipIdQuery = `
-      SELECT idequipement 
-      FROM equipement 
-      WHERE ipadresse = $1
-    `;
-    
-    const cloudEquipResult = await cloudPool.query(getCloudEquipIdQuery, [ipAdresse]);
-    if (!cloudEquipResult.rows.length) {
-      throw new Error('Equipment not found in cloud database');
+    let cloudEquipId = null;
+    try {
+      const getCloudEquipIdQuery = `
+        SELECT idequipement 
+        FROM equipement 
+        WHERE ipadresse = $1
+      `;
+      const cloudEquipResult = await cloudPool.query(getCloudEquipIdQuery, [ipAdresse]);
+      if (cloudEquipResult.rows.length) {
+        cloudEquipId = cloudEquipResult.rows[0].idequipement;
+      }
+    } catch (cloudError) {
+      console.warn('Could not get equipment from cloud for logging:', cloudError.message);
     }
-
-    const cloudEquipId = cloudEquipResult.rows[0].idequipement;
 
     const query = `
       INSERT INTO action (
@@ -846,23 +848,27 @@ class EquipmentRepository {
       RETURNING *
     `;
 
+    // Execute for local database first
+    const localValues = [
+      idequipement,
+      command_type,
+      command_details,
+      old_value,
+      new_value,
+      executed_by,
+      executed_at
+    ];
+    let localResult;
     try {
-      console.log('Executing query:', query);
-      
-      // Execute for local database
-      const localValues = [
-        idequipement,
-        command_type,
-        command_details,
-        old_value,
-        new_value,
-        executed_by,
-        executed_at
-      ];
-      console.log('Local values:', localValues);
-      const localResult = await localPool.query(query, localValues);
+      localResult = await localPool.query(query, localValues);
+    } catch (error) {
+      console.error('Error logging command execution in local database:', error);
+      throw error;
+    }
 
-      // Execute for cloud database with its corresponding idequipement
+    // Try to log in cloud, but ignore errors
+    let cloudResult = null;
+    if (cloudEquipId) {
       const cloudValues = [
         cloudEquipId,
         command_type,
@@ -872,26 +878,18 @@ class EquipmentRepository {
         executed_by,
         executed_at
       ];
-      console.log('Cloud values:', cloudValues);
-      const cloudResult = await cloudPool.query(query, cloudValues);
-
-      console.log('Local result:', localResult.rows[0]);
-      console.log('Cloud result:', cloudResult.rows[0]);
-
-      return {
-        local: localResult.rows[0],
-        cloud: cloudResult.rows[0]
-      };
-    } catch (error) {
-      console.error('Error logging command execution:', error);
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        detail: error.detail,
-        hint: error.hint
-      });
-      throw error;
+      try {
+        const cloudRes = await cloudPool.query(query, cloudValues);
+        cloudResult = cloudRes.rows[0];
+      } catch (cloudError) {
+        console.warn('Could not log command in cloud database (ignored):', cloudError.message);
+      }
     }
+
+    return {
+      local: localResult.rows[0],
+      cloud: cloudResult
+    };
   }
 
   /**

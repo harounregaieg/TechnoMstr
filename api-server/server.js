@@ -19,6 +19,7 @@ const monitorController = require('./controllers/monitorController');
 const pdaMonitorController = require('./controllers/pdaMonitorController');
 const { scanDevices } = require('./controllers/pdainfo');
 const equipmentRepository = require('./models/equipmentRepository');
+const pdaRepository = require('./models/pdaRepository');
 const User = require('./models/userModel');
 require('dotenv').config();
 
@@ -125,6 +126,45 @@ app.get('/api/pda/scan', async (req, res) => {
     } catch (error) {
         console.error('Error scanning PDAs:', error);
         res.status(500).json({ error: 'Failed to scan PDAs' });
+    }
+});
+
+// Get applications for a specific PDA
+app.get('/api/pda/:id/applications', async (req, res) => {
+    try {
+        const pdaId = req.params.id;
+        console.log(`Fetching applications for PDA ID: ${pdaId}`);
+        
+        const applications = await pdaRepository.getPdaApplications(pdaId);
+        
+        res.json({
+            success: true,
+            applications: applications
+        });
+    } catch (error) {
+        console.error('Error fetching PDA applications:', error);
+        res.status(500).json({ error: 'Failed to fetch PDA applications' });
+    }
+});
+
+// Store applications for a PDA
+app.post('/api/pda/:id/applications', async (req, res) => {
+    try {
+        const pdaId = req.params.id;
+        const { applications } = req.body;
+        
+        if (!Array.isArray(applications)) {
+            return res.status(400).json({ error: 'Applications must be an array of package names' });
+        }
+        
+        console.log(`Storing ${applications.length} applications for PDA ID: ${pdaId}`);
+        
+        const result = await pdaRepository.storeApplicationsForPda(pdaId, applications);
+        
+        res.json(result);
+    } catch (error) {
+        console.error('Error storing PDA applications:', error);
+        res.status(500).json({ error: 'Failed to store PDA applications' });
     }
 });
 

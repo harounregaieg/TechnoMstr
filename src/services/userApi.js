@@ -92,8 +92,4 @@ export const userApi = {
     }
   },
 
-  // Add more methods as needed for other API operations
-  // For example:
-  // async createUser(userData) { ... }
-  // async updateUser(userId, userData) { ... }
 };

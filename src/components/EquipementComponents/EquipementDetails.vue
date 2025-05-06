@@ -127,10 +127,10 @@ export default {
     getBatteryStatusText(status) {
       const statusMap = {
         1: 'Unknown - Battery status cannot be determined',
-        2: 'Charging - Battery is currently charging',
-        3: 'Discharging - Battery is currently discharging',
-        4: 'Not Charging - Battery is not charging',
-        5: 'Full - Battery is fully charged'
+        2: 'Equipement en charge',
+        3: 'Equipement en décharge',
+        4: 'Equipement en pause',
+        5: 'Plein Charge'
       };
       return statusMap[status] || 'Unknown - Battery status cannot be determined';
     },

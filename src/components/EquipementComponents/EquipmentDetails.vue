@@ -185,6 +185,27 @@
               </div>
             </div>
           </div>
+          
+          <!-- Applications Section -->
+          <div class="applications-section" v-if="pdaApplications.length > 0">
+            <div class="section-header">
+              <h3>Applications Installées</h3>
+            </div>
+            <div class="applications-list">
+              <div class="application-item" v-for="app in pdaApplications" :key="app.package_name">
+                {{ app.package_name }}
+              </div>
+            </div>
+          </div>
+          <div v-else-if="loadingApps" class="applications-section">
+            <div class="section-header">
+              <h3>Applications Installées</h3>
+            </div>
+            <div class="loading-apps">
+              <div class="loading-spinner"></div>
+              <span>Chargement des applications...</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -208,6 +229,8 @@ export default {
     const loading = ref(true);
     const error = ref(null);
     const currentUser = ref(null);
+    const pdaApplications = ref([]);
+    const loadingApps = ref(false);
 
     const fetchEquipmentDetails = async () => {
       loading.value = true;
@@ -223,6 +246,11 @@ export default {
         const data = await response.json();
         console.log('Equipment details response:', data);
         equipment.value = data;
+        
+        // If it's a PDA, fetch the installed applications
+        if (data.type === 'PDA') {
+          fetchPdaApplications();
+        }
       } catch (err) {
         console.error('Error loading equipment details:', err);
         error.value = err.message;
@@ -240,6 +268,25 @@ export default {
         console.log('Current user structure:', JSON.stringify(currentUser.value, null, 2));
       } catch (err) {
         console.error('Error fetching current user:', err);
+      }
+    };
+
+    const fetchPdaApplications = async () => {
+      loadingApps.value = true;
+      try {
+        const response = await fetch(`http://localhost:3000/api/pda/${props.equipmentId}/applications`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch PDA applications');
+        }
+        
+        const data = await response.json();
+        console.log('PDA applications response:', data);
+        pdaApplications.value = data.applications || [];
+      } catch (err) {
+        console.error('Error loading PDA applications:', err);
+      } finally {
+        loadingApps.value = false;
       }
     };
 
@@ -267,11 +314,11 @@ export default {
 
     const getBatteryStatusText = (status) => {
         const statusMap = {
-            1: 'Unknown - Battery status cannot be determined',
-            2: 'Charging - Battery is currently charging',
-            3: 'Discharging - Battery is currently discharging',
-            4: 'Not Charging - Battery is not charging',
-            5: 'Full - Battery is fully charged'
+            1: 'État de la batterie inconnu',
+            2: 'Equipement en charge',
+            3: 'Equipement en décharge',
+            4: 'Equipement en pause',
+            5: 'Plein Charge'
         };
         return statusMap[status] || 'Unknown - Battery status cannot be determined';
     };
@@ -303,11 +350,14 @@ export default {
       loading,
       error,
       currentUser,
+      pdaApplications,
+      loadingApps,
       getStatusClass,
       getStatusText,
-      getBatteryStatusText,
       getStatusIcon,
-      calculateStoragePercentage
+      getBatteryStatusText,
+      calculateStoragePercentage,
+      fetchEquipmentDetails
     };
   }
 };
@@ -573,5 +623,51 @@ export default {
   font-size: 16px;
   font-weight: 700;
   color: #1e293b;
+}
+
+/* Applications section styles */
+.applications-section {
+  margin-top: 32px;
+}
+
+.applications-section .section-header {
+  margin-bottom: 24px;
+}
+
+.applications-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background-color: #f8fafc;
+  border-radius: 8px;
+}
+
+.application-item {
+  background: #edf2f7;
+  padding: 8px 16px;
+  border-radius: 16px;
+  font-size: 14px;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.loading-apps {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px;
+}
+
+.loading-apps .loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f1f5f9;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 </style> 

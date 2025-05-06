@@ -1,7 +1,7 @@
 <template>
     <div class="home-page">
       <div class="dashboard-header">
-        <h1>Dashboard Overview</h1>
+        <h1>Tableau de Bord</h1>
         
       </div>
   

@@ -74,8 +74,109 @@ async function addPda(pdaData) {
   }
 }
 
+/**
+ * Add an application to the database
+ * @param {string} packageName - The package name of the application
+ * @returns {Promise<Object>} - Added application
+ */
+async function addApplication(packageName) {
+  const query = `
+    INSERT INTO application (packagename)
+    VALUES ($1)
+    ON CONFLICT (packagename) DO UPDATE SET packagename = $1
+    RETURNING idapp, packagename
+  `;
+  const values = [packageName];
+  
+  try {
+    const result = await localPool.query(query, values);
+    console.log('Application added or found:', result.rows[0]);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error adding application:', error);
+    throw error;
+  }
+}
+
+/**
+ * Link a PDA to an application
+ * @param {number} pdaId - The PDA ID
+ * @param {number} appId - The application ID
+ * @returns {Promise<Object>} - Added link
+ */
+async function linkPdaToApplication(pdaId, appId) {
+  const query = `
+    INSERT INTO pda_application (idpda, idapp)
+    VALUES ($1, $2)
+    ON CONFLICT (idpda, idapp) DO NOTHING
+    RETURNING *
+  `;
+  const values = [pdaId, appId];
+  
+  try {
+    const result = await localPool.query(query, values);
+    return result.rowCount > 0 ? result.rows[0] : { message: 'Link already exists' };
+  } catch (error) {
+    console.error('Error linking PDA to application:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get all applications for a PDA
+ * @param {number} pdaId - The PDA ID
+ * @returns {Promise<Array>} - List of applications
+ */
+async function getPdaApplications(pdaId) {
+  const query = `
+    SELECT a.packagename
+    FROM application a
+    INNER JOIN pda_application pa ON a.idapp = pa.idapp
+    WHERE pa.idpda = $1
+  `;
+  const values = [pdaId];
+  
+  try {
+    const result = await localPool.query(query, values);
+    return result.rows;
+  } catch (error) {
+    console.error('Error getting PDA applications:', error);
+    throw error;
+  }
+}
+
+/**
+ * Store multiple applications for a PDA
+ * @param {number} pdaId - The PDA ID
+ * @param {Array<string>} packageNames - List of package names
+ * @returns {Promise<Object>} - Result of the operation
+ */
+async function storeApplicationsForPda(pdaId, packageNames) {
+  try {
+    // First, clear existing applications for this PDA
+    await localPool.query('DELETE FROM pda_application WHERE idpda = $1', [pdaId]);
+    
+    let addedCount = 0;
+    // Add each application and link to PDA
+    for (const packageName of packageNames) {
+      const app = await addApplication(packageName);
+      await linkPdaToApplication(pdaId, app.idapp);
+      addedCount++;
+    }
+    
+    return { success: true, message: `Stored ${addedCount} applications for PDA ID: ${pdaId}` };
+  } catch (error) {
+    console.error('Error storing applications for PDA:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   addBatteryStatus,
   addStorageStatus,
-  addPda
+  addPda,
+  addApplication,
+  linkPdaToApplication,
+  getPdaApplications,
+  storeApplicationsForPda
 }; 

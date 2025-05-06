@@ -29,6 +29,29 @@ async function getAdbDevices() {
     }
 }
 
+async function getInstalledApps(ip) {
+    /** Get installed applications from a device */
+    try {
+        const { stdout } = await exec(`adb -s ${ip}:5555 shell pm list packages -3`);
+        const apps = [];
+        
+        // Parse the output to get package names
+        for (const line of stdout.split('\n')) {
+            if (line.trim().startsWith('package:')) {
+                const packageName = line.trim().substring(8).trim();
+                if (packageName) {
+                    apps.push(packageName);
+                }
+            }
+        }
+        
+        return apps;
+    } catch (error) {
+        console.error(`Error getting installed apps for ${ip}:`, error);
+        return [];
+    }
+}
+
 async function getDeviceInfo(ip) {
     /** Get detailed information from a specific device */
     try {
@@ -56,15 +79,19 @@ async function getDeviceInfo(ip) {
         
         // Get battery information
         const { stdout: battery } = await exec(`adb -s ${ip}:5555 shell dumpsys battery`);
+        console.log(`RAW BATTERY OUTPUT for ${ip}:\n${battery}`); // Log raw output for debugging
         const batteryInfo = {};
-        const batteryLines = battery.split('\n');
-        for (const line of batteryLines) {
-            if (line.includes('status:')) {
-                const status = parseInt(line.split('status:')[1].trim());
-                batteryInfo.status = status;  // Store the numeric value directly
-            } else if (line.includes('level:') && !line.includes('low temp') && !line.includes('high temp')) {
-                batteryInfo.level = line.split('level:')[1].trim();
-            }
+        const statusMatch = battery.match(/status:\s*(\d+)/);
+        const levelMatch = battery.match(/level:\s*(\d+)/);
+        if (statusMatch) {
+            batteryInfo.status = parseInt(statusMatch[1], 10);
+        } else {
+            batteryInfo.status = null;
+        }
+        if (levelMatch) {
+            batteryInfo.level = parseInt(levelMatch[1], 10);
+        } else {
+            batteryInfo.level = null;
         }
         deviceInfo["Battery Info"] = batteryInfo;
         
@@ -88,6 +115,9 @@ async function getDeviceInfo(ip) {
                 }
             }
         }
+        
+        // Get installed applications
+        deviceInfo["Installed Apps"] = await getInstalledApps(ip);
         
         return deviceInfo;
     } catch (error) {
@@ -123,12 +153,17 @@ async function scanDevices() {
                     type: 'PDA',
                     model: deviceInfo.Model || 'N/A',
                     androidVersion: deviceInfo["Android Version"] || 'N/A',
-                    serialNumber: deviceInfo["Serial Number"] || 'N/A',
+                    serialnumber: deviceInfo["Serial Number"] || 'N/A',
                     manufacturer: deviceInfo.Manufacturer || 'N/A',
                     deviceName: deviceInfo["Device Name"] || 'N/A',
                     batteryInfo: {},
-                    storageInfo: deviceInfo["Storage Info"] || {}
+                    storageInfo: deviceInfo["Storage Info"] || {},
+                    installedApps: deviceInfo["Installed Apps"] || []
                 };
+
+                // Add debug output for serialnumber
+                console.log(`DEBUG: Setting serialnumber=${formattedDevice.serialnumber} for PDA with IP=${ip}`);
+                console.log(`DEBUG: Original Serial Number from device: "${deviceInfo["Serial Number"]}"`);
 
                 // Parse battery information
                 if (deviceInfo["Battery Info"]) {
@@ -143,7 +178,7 @@ async function scanDevices() {
                 console.log(`  IP Address: ${ip}`);
                 console.log(`  Model: ${formattedDevice.model}`);
                 console.log(`  Android Version: ${formattedDevice.androidVersion}`);
-                console.log(`  Serial Number: ${formattedDevice.serialNumber}`);
+                console.log(`  Serial Number: ${formattedDevice.serialnumber}`);
                 console.log(`  Manufacturer: ${formattedDevice.manufacturer}`);
                 console.log(`  Device Name: ${formattedDevice.deviceName}`);
                 
@@ -161,6 +196,15 @@ async function scanDevices() {
                     console.log(`  Used: ${formattedDevice.storageInfo.Used}`);
                     console.log(`  Available: ${formattedDevice.storageInfo.Available}`);
                 }
+                
+                console.log("\n=== Installed Applications ===");
+                if (formattedDevice.installedApps.length > 0) {
+                    formattedDevice.installedApps.forEach(app => {
+                        console.log(`  ${app}`);
+                    });
+                } else {
+                    console.log("  No applications found");
+                }
             }
         }
         
@@ -176,7 +220,8 @@ async function scanDevices() {
 module.exports = {
     scanDevices,
     getAdbDevices,
-    getDeviceInfo
+    getDeviceInfo,
+    getInstalledApps
 };
 
 // Run the scanner if this file is executed directly

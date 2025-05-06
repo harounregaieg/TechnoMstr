@@ -62,8 +62,29 @@ exports.addScannedPrinter = async (req, res) => {
         disponibilite: true, // PDAs are considered available if detected
         type: 'PDA', // Explicitly set type as PDA
         idMarque: 1, // Assuming 3 is the ID for Zebra PDAs in your marque table
-        serialnumber: printer.serialNumber || printer.serialnumber || 'Unknown' // Add serial number directly
+        serialnumber: printer.serialnumber || 'Unknown' // Only use lowercase property
       };
+      
+      // Handle the N/A or missing serialnumber case
+      if (!printer.serialnumber || printer.serialnumber === 'N/A' || printer.serialnumber === 'Unknown') {
+        try {
+          // Get the serial number directly using ADB
+          const { exec } = require('child_process');
+          const util = require('util');
+          const execPromise = util.promisify(exec);
+          
+          console.log(`Attempting to fetch serial number directly from device ${ip}...`);
+          const { stdout: serial } = await execPromise(`adb -s ${ip}:5555 shell getprop ro.serialno`);
+          if (serial && serial.trim()) {
+            equipmentData.serialnumber = serial.trim();
+            console.log(`Successfully retrieved serial number directly: ${equipmentData.serialnumber}`);
+          } else {
+            console.log('Failed to retrieve serial number directly');
+          }
+        } catch (serialError) {
+          console.error('Error retrieving serial number directly:', serialError);
+        }
+      }
       
       const equipement = await equipmentRepository.addEquipment(equipmentData);
       
@@ -87,7 +108,7 @@ exports.addScannedPrinter = async (req, res) => {
       const pdaData = {
         id: equipement.local.idequipement,
         versionAndroid: printer.androidVersion || 'Unknown',
-        serialNumber: equipmentData.serialnumber, // Use the same serial number
+        serialnumber: equipmentData.serialnumber || 'Unknown', // Use the potentially updated serialnumber
         modele: printer.model || 'Unknown Model',
         idStockage: storageResult.idStockage, // Access the ID directly
         idBatterie: batteryResult.idBatterie // Access the ID directly
@@ -96,6 +117,15 @@ exports.addScannedPrinter = async (req, res) => {
       console.log('Adding PDA with data:', pdaData); // Debug log
       
       const pdaResult = await pdaRepository.addPda(pdaData);
+      
+      // Store the installed applications if any
+      if (Array.isArray(printer.installedApps) && printer.installedApps.length > 0) {
+        console.log(`Storing ${printer.installedApps.length} applications for PDA ID ${equipement.local.idequipement}`);
+        const appsResult = await pdaRepository.storeApplicationsForPda(equipement.local.idequipement, printer.installedApps);
+        console.log('Applications stored:', appsResult);
+      } else {
+        console.log('No applications to store for this PDA');
+      }
       
       await notificationController.createNotification(
         'success',

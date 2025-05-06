@@ -20,7 +20,7 @@
     <div class="menu">
       <router-link class="button" to="/" v-if="canSee('dashboard')">
         <span class="material-icons">home</span>
-        <span class="text">Dashboard</span>
+        <span class="text">Tableau de Bord</span>
       </router-link>
 
       <router-link class="button" to="/equipements" v-if="canSee('equipements')">
@@ -46,7 +46,7 @@
 
       <router-link class="button" to="/account" v-if="canSee('account')">
         <span class="material-icons">account_circle</span>
-        <span class="text">Account</span>
+        <span class="text">Profile</span>
       </router-link>
     </div>
 
@@ -55,7 +55,7 @@
     <div class="menu">
       <button class="button" @click="handleLogout">
         <span class="material-icons">logout</span>
-        <span class="text">LogOut</span>
+        <span class="text">Log Out</span>
       </button>   
     </div>
   </aside>

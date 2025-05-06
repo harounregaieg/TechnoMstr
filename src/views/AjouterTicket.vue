@@ -59,7 +59,10 @@
           </FormRow>
   
           <div class="form-actions">
-            <button type="submit" class="submit-button">Créer</button>
+            <button type="submit" class="submit-button" :disabled="isSubmitting">
+              <span v-if="isSubmitting">Création...</span>
+              <span v-else>Créer</span>
+            </button>
           </div>
         </form>
       </section>
@@ -103,6 +106,7 @@
           description: "",
           ticketType: "type1", // Default to type1
         },
+        isSubmitting: false, // Add loading state
       };
     },
     async mounted() {
@@ -159,6 +163,8 @@
         }
       },
       async handleSubmit() {
+        if (this.isSubmitting) return; // Prevent double submit
+        this.isSubmitting = true;
         try {
           // Validate required fields
           if (!this.formData.sujet || !this.formData.equipementserialnumber || !this.formData.priority || !this.formData.responsable) {
@@ -169,6 +175,7 @@
               responsable: !!this.formData.responsable
             });
             alert('Please fill in all required fields');
+            this.isSubmitting = false;
             return;
           }
 
@@ -211,6 +218,8 @@
             formData: this.formData
           });
           alert(`Failed to create ticket: ${error.message}`);
+        } finally {
+          this.isSubmitting = false;
         }
       },
     },

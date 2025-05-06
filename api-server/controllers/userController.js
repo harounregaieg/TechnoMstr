@@ -31,22 +31,81 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
+    // Check if user with this email already exists in the local database before proceeding
+    try {
+      const existingUser = await User.getByEmail(userData.email);
+      if (existingUser) {
+        return res.status(409).json({ error: 'Email already exists' });
+      }
+    } catch (checkError) {
+      console.error('Error checking existing user:', checkError);
+      // We'll continue with user creation and let it handle any database errors
+    }
+
+    let cloudSuccess = true;
     // Handle department in both databases
-    await Department.handleDepartment(userData, 'create');
+    try {
+      await Department.handleDepartment(userData, 'create');
+    } catch (departmentError) {
+      console.error('Department error:', departmentError);
+      if (departmentError.code === 'ETIMEDOUT' || departmentError.code === 'ECONNREFUSED') {
+        cloudSuccess = false;
+        // Continue with creation - the department model should have handled local database
+      } else {
+        return res.status(500).json({ 
+          error: 'Failed to create user', 
+          details: 'Department error: ' + departmentError.message 
+        });
+      }
+    }
     
     // Create the user in both databases
-    const newUser = await User.create(userData);
-    
-    res.status(201).json({
-      message: 'User created successfully',
-      user: newUser
-    });
+    try {
+      const newUser = await User.create(userData);
+      
+      // If we reach here, the user was created successfully, either in both databases or in local only
+      if (cloudSuccess) {
+        res.status(201).json({
+          message: 'User created successfully in both databases',
+          user: newUser
+        });
+      } else {
+        res.status(201).json({
+          message: 'User created successfully in local database',
+          warning: 'Cloud database was unavailable and will be updated later',
+          user: newUser
+        });
+      }
+    } catch (createError) {
+      console.error('Error in final user creation step:', createError);
+      
+      if (createError.message === 'Email already exists') {
+        return res.status(409).json({ error: 'Email already exists' });
+      } else {
+        return res.status(500).json({ 
+          error: 'Failed to create user', 
+          details: createError.message 
+        });
+      }
+    }
   } catch (error) {
     console.error('Error creating user:', error);
+    
     if (error.message === 'Email already exists') {
       return res.status(409).json({ error: 'Email already exists' });
+    } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+      // This means the cloud database is unavailable, but we might have succeeded locally
+      return res.status(201).json({
+        message: 'User may have been created in local database only',
+        warning: 'Cloud database unavailable',
+        details: error.message
+      });
     }
-    res.status(500).json({ error: 'Failed to create user' });
+    
+    res.status(500).json({ 
+      error: 'Failed to create user', 
+      details: error.message 
+    });
   }
 };
 

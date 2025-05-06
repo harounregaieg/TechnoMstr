@@ -25,19 +25,48 @@ class User {
         userData.departement
       ];
       
-      // Insert into both databases
-      const [localResult, cloudResult] = await Promise.all([
-        localPool.query(query, values),
-        cloudPool.query(query, values)
-      ]);
-      
-      return localResult.rows[0];
-    } catch (error) {
-      // Check for duplicate email
-      if (error.code === '23505' && error.constraint === 'users_email_key') {
-        throw new Error('Email already exists');
+      // Check if this user already exists in local database
+      try {
+        const checkQuery = 'SELECT email FROM users WHERE email = $1';
+        const checkResult = await localPool.query(checkQuery, [userData.email]);
+        if (checkResult.rows.length > 0) {
+          throw new Error('Email already exists');
+        }
+      } catch (checkError) {
+        if (checkError.message === 'Email already exists') {
+          throw checkError;
+        }
+        // Continue if it's just a database error checking existence
+        console.error('Error checking email existence:', checkError);
       }
+      
+      // Insert into local first
+      let localResult;
+      try {
+        const localRes = await localPool.query(query, values);
+        localResult = localRes.rows[0];
+      } catch (localErr) {
+        if (localErr.code === '23505' && localErr.constraint === 'users_email_key') {
+          throw new Error('Email already exists');
+        }
+        throw new Error(`Failed to create user in local DB: ${localErr.message}`);
+      }
+      
+      // Try to insert into cloud, but ignore errors
+      try {
+        await cloudPool.query(query, values);
+        console.log('User created in cloud database');
+      } catch (cloudErr) {
+        console.error('Cloud database insert failed (ignored):', cloudErr.message);
+      }
+      
+      return localResult;
+    } catch (error) {
+      console.error('Error in User.create:', error);
+      if (error.message === 'Email already exists') {
       throw error;
+      }
+      throw new Error(`Failed to create user: ${error.message}`);
     }
   }
 
@@ -120,6 +149,8 @@ class User {
       console.log('Update query:', query);
       console.log('Query values:', values);
 
+      // Try to update both databases, but continue with local if cloud fails
+      try {
       // Update both databases
       const [localResult, cloudResult] = await Promise.all([
         localPool.query(query, values),
@@ -130,6 +161,15 @@ class User {
       console.log('Cloud update result:', cloudResult.rows[0]);
 
       return localResult.rows[0];
+      } catch (cloudError) {
+        console.error('Error updating user in cloud database:', cloudError);
+        
+        // If there was an error with the cloud database, still update local
+        const localResult = await localPool.query(query, values);
+        console.log('User updated in local database only');
+        
+        return localResult.rows[0];
+      }
     } catch (error) {
       console.error('Error in User.update:', error);
       throw error;
@@ -152,13 +192,28 @@ class User {
     const deleteQuery = 'DELETE FROM users WHERE email = $1 RETURNING id, departement';
     
     try {
-      // Delete from local database
-      const localResult = await localPool.query(deleteQuery, [userEmail]);
-      
-      // Delete from cloud database
-      await cloudPool.query(deleteQuery, [userEmail]);
-      
+      // Try to delete from both databases, but continue with local if cloud fails
+      let localResult;
+      try {
+        // Delete from both databases
+        const [localRes, cloudRes] = await Promise.all([
+          localPool.query(deleteQuery, [userEmail]),
+          cloudPool.query(deleteQuery, [userEmail])
+        ]);
+        localResult = localRes;
+      } catch (cloudError) {
+        console.error('Error deleting user from cloud database:', cloudError);
+        // If there was an error with the cloud database, still delete from local
+        localResult = await localPool.query(deleteQuery, [userEmail]);
+        console.log('User deleted from local database only');
+      }
+      // Safely check if localResult.rows[0] exists
+      if (localResult.rows && localResult.rows[0]) {
       return { id: localResult.rows[0].id, departement: userDepartment };
+      } else {
+        // User was deleted, but no row returned (should not happen, but handle gracefully)
+        return { id: null, departement: userDepartment };
+      }
     } catch (error) {
       console.error('Error deleting user:', error);
       throw error;
@@ -193,9 +248,14 @@ class User {
   }
 
   static async getByEmail(email) {
+    try {
     const query = 'SELECT id, nom, prenom, email, roleuser, statut, departement FROM users WHERE email = $1';
     const result = await localPool.query(query, [email]);
     return result.rows[0];
+    } catch (error) {
+      console.error('Error in User.getByEmail:', error);
+      throw error;
+    }
   }
 }
 

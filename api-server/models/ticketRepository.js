@@ -93,21 +93,18 @@ class TicketRepository {
     const agentEmail = agentResult.rows[0].email;
     const requesterEmail = requesterResult.rows[0].email;
 
-    // Get user IDs from cloud database using emails
+    // Try to get cloud user IDs, but ignore errors if cloud is down
+    let cloudAgentId = null, cloudRequesterId = null;
+    try {
     const [cloudAgentResult, cloudRequesterResult] = await Promise.all([
       cloudPool.query('SELECT id FROM users WHERE email = $1', [agentEmail]),
       cloudPool.query('SELECT id FROM users WHERE email = $1', [requesterEmail])
     ]);
-
-    if (cloudAgentResult.rowCount === 0) {
-      throw new Error(`Agent with email ${agentEmail} not found in cloud database`);
+      if (cloudAgentResult.rowCount > 0) cloudAgentId = cloudAgentResult.rows[0].id;
+      if (cloudRequesterResult.rowCount > 0) cloudRequesterId = cloudRequesterResult.rows[0].id;
+    } catch (e) {
+      console.warn('Cloud user lookup failed, will skip cloud insert:', e.message);
     }
-    if (cloudRequesterResult.rowCount === 0) {
-      throw new Error(`Requester with email ${requesterEmail} not found in cloud database`);
-    }
-
-    const cloudAgentId = cloudAgentResult.rows[0].id;
-    const cloudRequesterId = cloudRequesterResult.rows[0].id;
 
     const query = `
       INSERT INTO ticket (
@@ -123,8 +120,7 @@ class TicketRepository {
       RETURNING *
     `;
 
-    try {
-      // Insert into local database
+    // Insert into local first
       const localValues = [
         sujet, 
         serialnumber, 
@@ -134,8 +130,16 @@ class TicketRepository {
         piecesaremplacer,
         description
       ];
+    let localResult;
+    try {
+      localResult = await localPool.query(query, localValues);
+    } catch (error) {
+      if (error.code === '23505') throw new Error('Duplicate record');
+      throw new Error(`Database error: ${error.message}`);
+    }
       
-      // Insert into cloud database with cloud user IDs
+    // Try to insert into cloud, but only if we have both cloud user IDs
+    if (cloudAgentId && cloudRequesterId) {
       const cloudValues = [
         sujet, 
         serialnumber, 
@@ -145,44 +149,15 @@ class TicketRepository {
         piecesaremplacer,
         description
       ];
-
-      console.log('Executing queries with values:', {
-        local: localValues,
-        cloud: cloudValues
-      });
-      
-      // Insert into both databases
-      const [localResult, cloudResult] = await Promise.all([
-        localPool.query(query, localValues),
-        cloudPool.query(query, cloudValues)
-      ]);
-      
-      console.log('Query results:', {
-        local: localResult.rows[0],
-        cloud: cloudResult.rows[0]
-      });
+      try {
+        await cloudPool.query(query, cloudValues);
+      } catch (e) {
+        console.warn('Cloud ticket insert failed (ignored):', e.message);
+      }
+    }
 
       // Return the local result as primary response
       return localResult.rows[0];
-    } catch (error) {
-      console.error('Database error creating ticket:', {
-        error: error.message,
-        code: error.code,
-        detail: error.detail,
-        table: error.table,
-        constraint: error.constraint
-      });
-      
-      // Provide more specific error messages based on PostgreSQL error codes
-      switch (error.code) {
-        case '23503':
-          throw new Error('Referenced record does not exist (foreign key violation)');
-        case '23505':
-          throw new Error('Duplicate record');
-        default:
-          throw new Error(`Database error: ${error.message}`);
-      }
-    }
   }
 
   /**
@@ -369,23 +344,21 @@ class TicketRepository {
       const requesterEmail = ticket.requester_email;
 
       // Get cloud user IDs using emails
+      let cloudAgentId = null, cloudRequesterId = null;
+      try {
       const [cloudAgentResult, cloudRequesterResult] = await Promise.all([
         cloudPool.query('SELECT id FROM users WHERE email = $1', [agentEmail]),
         cloudPool.query('SELECT id FROM users WHERE email = $1', [requesterEmail])
       ]);
-
-      if (cloudAgentResult.rowCount === 0) {
-        throw new Error(`Agent with email ${agentEmail} not found in cloud database`);
+        if (cloudAgentResult.rowCount > 0) cloudAgentId = cloudAgentResult.rows[0].id;
+        if (cloudRequesterResult.rowCount > 0) cloudRequesterId = cloudRequesterResult.rows[0].id;
+      } catch (e) {
+        console.warn('Cloud user lookup failed, will skip cloud update:', e.message);
       }
-      if (cloudRequesterResult.rowCount === 0) {
-        throw new Error(`Requester with email ${requesterEmail} not found in cloud database`);
-      }
-
-      const cloudAgentId = cloudAgentResult.rows[0].id;
-      const cloudRequesterId = cloudRequesterResult.rows[0].id;
 
       // Get cloud ticket ID using user IDs and other matching fields
-      // More flexible matching without exact timestamp
+      let cloudTicketId = null;
+      if (cloudAgentId && cloudRequesterId) {
       const cloudTicketQuery = `
         SELECT idticket 
         FROM ticket 
@@ -397,15 +370,16 @@ class TicketRepository {
         ORDER BY created_at DESC
         LIMIT 1
       `;
-
+        try {
       const cloudTicketResult = await cloudPool.query(cloudTicketQuery, [
         cloudAgentId,
         cloudRequesterId,
         ticket.serialnumber,
         ticket.sujet
       ]);
-
-      if (cloudTicketResult.rowCount === 0) {
+          if (cloudTicketResult.rowCount > 0) {
+            cloudTicketId = cloudTicketResult.rows[0].idticket;
+          } else {
         // Try a more relaxed matching if the first attempt fails
         const relaxedCloudTicketQuery = `
           SELECT idticket 
@@ -417,89 +391,44 @@ class TicketRepository {
           ORDER BY created_at DESC
           LIMIT 1
         `;
-
         const relaxedCloudTicketResult = await cloudPool.query(relaxedCloudTicketQuery, [
           cloudAgentId,
           cloudRequesterId,
           ticket.serialnumber
         ]);
-
-        if (relaxedCloudTicketResult.rowCount === 0) {
-          throw new Error('Matching ticket not found in cloud database');
-        }
-
-        console.log('Found matching ticket using relaxed criteria');
-        const cloudTicketId = relaxedCloudTicketResult.rows[0].idticket;
-
-        // Update both databases
-        const updateQuery = `
-          UPDATE ticket 
-          SET statut = 'Resolu'
-          WHERE idticket = $1
-          RETURNING *
-        `;
-
-        console.log('Executing close ticket queries with IDs:', {
-          local: ticketId,
-          cloud: cloudTicketId
-        });
-        
-        const [localResult, cloudResult] = await Promise.all([
-          localPool.query(updateQuery, [ticketId]),
-          cloudPool.query(updateQuery, [cloudTicketId])
-        ]);
-        
-        console.log('Close ticket query results:', {
-          local: {
-            rowCount: localResult.rowCount,
-            rows: localResult.rows
-          },
-          cloud: {
-            rowCount: cloudResult.rowCount,
-            rows: cloudResult.rows
+            if (relaxedCloudTicketResult.rowCount > 0) {
+              cloudTicketId = relaxedCloudTicketResult.rows[0].idticket;
+            }
           }
-        });
-        
-        if (localResult.rowCount === 0) {
-          throw new Error('Failed to update ticket in local database');
+        } catch (e) {
+          console.warn('Cloud ticket lookup failed, will skip cloud update:', e.message);
         }
-
-        return localResult.rows[0];
       }
 
-      const cloudTicketId = cloudTicketResult.rows[0].idticket;
-
-      // Update both databases
+      // Update local first
       const updateQuery = `
         UPDATE ticket 
         SET statut = 'Resolu'
         WHERE idticket = $1
         RETURNING *
       `;
-
-      console.log('Executing close ticket queries with IDs:', {
-        local: ticketId,
-        cloud: cloudTicketId
-      });
-      
-      const [localResult, cloudResult] = await Promise.all([
-        localPool.query(updateQuery, [ticketId]),
-        cloudPool.query(updateQuery, [cloudTicketId])
-      ]);
-      
-      console.log('Close ticket query results:', {
-        local: {
-          rowCount: localResult.rowCount,
-          rows: localResult.rows
-        },
-        cloud: {
-          rowCount: cloudResult.rowCount,
-          rows: cloudResult.rows
+      let localResult;
+      try {
+        localResult = await localPool.query(updateQuery, [ticketId]);
+        if (localResult.rowCount === 0) {
+          throw new Error('Failed to update ticket in local database');
         }
-      });
-      
-      if (localResult.rowCount === 0) {
-        throw new Error('Failed to update ticket in local database');
+      } catch (error) {
+        throw new Error('Failed to update ticket in local database: ' + error.message);
+      }
+
+      // Try to update cloud, but ignore errors
+      if (cloudTicketId) {
+        try {
+          await cloudPool.query(updateQuery, [cloudTicketId]);
+        } catch (e) {
+          console.warn('Cloud ticket update failed (ignored):', e.message);
+        }
       }
 
       return localResult.rows[0];
@@ -549,22 +478,21 @@ class TicketRepository {
       const requesterEmail = ticket.requester_email;
 
       // Get cloud user IDs using emails
+      let cloudAgentId = null, cloudRequesterId = null;
+      try {
       const [cloudAgentResult, cloudRequesterResult] = await Promise.all([
         cloudPool.query('SELECT id FROM users WHERE email = $1', [agentEmail]),
         cloudPool.query('SELECT id FROM users WHERE email = $1', [requesterEmail])
       ]);
-
-      if (cloudAgentResult.rowCount === 0) {
-        throw new Error(`Agent with email ${agentEmail} not found in cloud database`);
+        if (cloudAgentResult.rowCount > 0) cloudAgentId = cloudAgentResult.rows[0].id;
+        if (cloudRequesterResult.rowCount > 0) cloudRequesterId = cloudRequesterResult.rows[0].id;
+      } catch (e) {
+        console.warn('Cloud user lookup failed, will skip cloud delete:', e.message);
       }
-      if (cloudRequesterResult.rowCount === 0) {
-        throw new Error(`Requester with email ${requesterEmail} not found in cloud database`);
-      }
-
-      const cloudAgentId = cloudAgentResult.rows[0].id;
-      const cloudRequesterId = cloudRequesterResult.rows[0].id;
 
       // Get cloud ticket ID using user IDs and other matching fields
+      let cloudTicketId = null;
+      if (cloudAgentId && cloudRequesterId) {
       const cloudTicketQuery = `
         SELECT idticket 
         FROM ticket 
@@ -576,7 +504,7 @@ class TicketRepository {
         ORDER BY created_at DESC
         LIMIT 1
       `;
-
+        try {
       const cloudTicketResult = await cloudPool.query(cloudTicketQuery, [
         cloudAgentId,
         cloudRequesterId,
@@ -584,8 +512,9 @@ class TicketRepository {
         ticket.sujet,
         ticket.statut
       ]);
-
-      if (cloudTicketResult.rowCount === 0) {
+          if (cloudTicketResult.rowCount > 0) {
+            cloudTicketId = cloudTicketResult.rows[0].idticket;
+          } else {
         // Try a more relaxed matching if the first attempt fails
         const relaxedCloudTicketQuery = `
           SELECT idticket 
@@ -597,88 +526,44 @@ class TicketRepository {
           ORDER BY created_at DESC
           LIMIT 1
         `;
-
         const relaxedCloudTicketResult = await cloudPool.query(relaxedCloudTicketQuery, [
           cloudAgentId,
           cloudRequesterId,
           ticket.serialnumber,
           ticket.statut
         ]);
-
-        if (relaxedCloudTicketResult.rowCount === 0) {
-          throw new Error('Matching ticket not found in cloud database');
-        }
-
-        console.log('Found matching ticket using relaxed criteria');
-        const cloudTicketId = relaxedCloudTicketResult.rows[0].idticket;
-
-        // Delete from both databases
-        const deleteQuery = `
-          DELETE FROM ticket
-          WHERE idticket = $1
-          RETURNING *
-        `;
-
-        console.log('Executing delete ticket queries with IDs:', {
-          local: ticketId,
-          cloud: cloudTicketId
-        });
-        
-        const [localResult, cloudResult] = await Promise.all([
-          localPool.query(deleteQuery, [ticketId]),
-          cloudPool.query(deleteQuery, [cloudTicketId])
-        ]);
-        
-        console.log('Delete ticket query results:', {
-          local: {
-            rowCount: localResult.rowCount,
-            rows: localResult.rows
-          },
-          cloud: {
-            rowCount: cloudResult.rowCount,
-            rows: cloudResult.rows
+            if (relaxedCloudTicketResult.rowCount > 0) {
+              cloudTicketId = relaxedCloudTicketResult.rows[0].idticket;
+            }
           }
-        });
-        
-        if (localResult.rowCount === 0) {
-          throw new Error('Failed to delete ticket from local database');
+        } catch (e) {
+          console.warn('Cloud ticket lookup failed, will skip cloud delete:', e.message);
         }
-
-        return true;
       }
 
-      const cloudTicketId = cloudTicketResult.rows[0].idticket;
-
-      // Delete from both databases
+      // Delete from local first
       const deleteQuery = `
         DELETE FROM ticket
         WHERE idticket = $1
         RETURNING *
       `;
-
-      console.log('Executing delete ticket queries with IDs:', {
-        local: ticketId,
-        cloud: cloudTicketId
-      });
-      
-      const [localResult, cloudResult] = await Promise.all([
-        localPool.query(deleteQuery, [ticketId]),
-        cloudPool.query(deleteQuery, [cloudTicketId])
-      ]);
-      
-      console.log('Delete ticket query results:', {
-        local: {
-          rowCount: localResult.rowCount,
-          rows: localResult.rows
-        },
-        cloud: {
-          rowCount: cloudResult.rowCount,
-          rows: cloudResult.rows
+      let localResult;
+      try {
+        localResult = await localPool.query(deleteQuery, [ticketId]);
+        if (localResult.rowCount === 0) {
+          throw new Error('Failed to delete ticket from local database');
         }
-      });
-      
-      if (localResult.rowCount === 0) {
-        throw new Error('Failed to delete ticket from local database');
+      } catch (error) {
+        throw new Error('Failed to delete ticket from local database: ' + error.message);
+      }
+
+      // Try to delete from cloud, but ignore errors
+      if (cloudTicketId) {
+        try {
+          await cloudPool.query(deleteQuery, [cloudTicketId]);
+        } catch (e) {
+          console.warn('Cloud ticket delete failed (ignored):', e.message);
+        }
       }
 
       return true;
