@@ -15,6 +15,7 @@ const ipRoutes = require('./routes/ipRoutes');
 const monitorRoutes = require('./routes/monitorRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const departmentRoutes = require('./routes/departmentRoutes');
 const monitorController = require('./controllers/monitorController');
 const pdaMonitorController = require('./controllers/pdaMonitorController');
 const { scanDevices } = require('./controllers/pdainfo');
@@ -113,6 +114,7 @@ app.use('/api/printer', ipRoutes);
 app.use('/api/monitor', monitorRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/departments', departmentRoutes);
 
 // Add PDA scan route
 app.get('/api/pda/scan', async (req, res) => {
@@ -200,11 +202,64 @@ async function startServer() {
             console.log(`CORS enabled for origins: ${corsOptions.origin.join(', ')}`);
         });
 
-        // Set up periodic monitoring
-        const MONITOR_INTERVAL = 30 * 1000; // 30 seconds
-        setInterval(async () => {
+        // Define a variable for monitor interval that can be changed
+        let MONITOR_INTERVAL = 30 * 1000; // 30 seconds
+
+        // Add routes to get and update the interval
+        app.get('/api/monitor/interval', (req, res) => {
+            const intervalSeconds = MONITOR_INTERVAL / 1000;
+            res.json({ intervalSeconds });
+        });
+
+        app.post('/api/monitor/interval', (req, res) => {
             try {
-                console.log('Starting periodic equipment status check...');
+                const { intervalSeconds } = req.body;
+                
+                // Validate input
+                if (!intervalSeconds || typeof intervalSeconds !== 'number' || intervalSeconds < 10 || intervalSeconds > 300) {
+                    return res.status(400).json({ 
+                        error: 'Invalid interval. Must be a number between 10 and 300 seconds.' 
+                    });
+                }
+
+                // Update the interval
+                MONITOR_INTERVAL = intervalSeconds * 1000;
+                
+                console.log(`Monitor interval updated to ${intervalSeconds} seconds`);
+                
+                // Clear existing interval and set a new one
+                if (global.monitorIntervalId) {
+                    clearInterval(global.monitorIntervalId);
+                }
+                
+                // Set up new periodic monitoring with updated interval
+                global.monitorIntervalId = setInterval(async () => {
+                    try {
+                        console.log(`Starting periodic equipment status check (interval: ${intervalSeconds}s)...`);
+                        const [printerStatusUpdates, pdaStatusUpdates] = await Promise.all([
+                            monitorController.monitorAllEquipment(),
+                            pdaMonitorController.monitorAllPdas()
+                        ]);
+                        console.log('Periodic check completed:', {
+                            printers: printerStatusUpdates,
+                            pdas: pdaStatusUpdates
+                        });
+                    } catch (error) {
+                        console.error('Error in periodic equipment check:', error);
+                    }
+                }, MONITOR_INTERVAL);
+                
+                res.json({ success: true, intervalSeconds });
+            } catch (error) {
+                console.error('Error updating interval:', error);
+                res.status(500).json({ error: 'Failed to update interval' });
+            }
+        });
+
+        // Set up periodic monitoring
+        global.monitorIntervalId = setInterval(async () => {
+            try {
+                console.log(`Starting periodic equipment status check (interval: ${MONITOR_INTERVAL/1000}s)...`);
                 const [printerStatusUpdates, pdaStatusUpdates] = await Promise.all([
                     monitorController.monitorAllEquipment(),
                     pdaMonitorController.monitorAllPdas()

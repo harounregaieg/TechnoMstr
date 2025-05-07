@@ -27,7 +27,7 @@
       
       <div class="detail-row">
         <span class="label">Département:</span>
-        <span class="value">{{ currentUser ? (currentUser.nomdepartement || currentUser.departement || 'Non spécifié') : 'Chargement...' }}</span>
+        <span class="value">{{ equipment.departement || 'Non spécifié' }}</span>
       </div>
 
       <!-- PDA Specific Details -->
@@ -108,8 +108,6 @@
 </template>
 
 <script>
-import { userApi } from '../../services/userApi';
-
 export default {
   name: 'EquipementDetails',
   props: {
@@ -120,7 +118,7 @@ export default {
   },
   data() {
     return {
-      currentUser: null
+      // Removed currentUser as it's no longer needed
     };
   },
   methods: {
@@ -133,21 +131,11 @@ export default {
         5: 'Plein Charge'
       };
       return statusMap[status] || 'Unknown - Battery status cannot be determined';
-    },
-    async fetchCurrentUser() {
-      try {
-        this.currentUser = await userApi.getCurrentUser();
-        console.log('Current user:', this.currentUser);
-        console.log('Current user department:', this.currentUser?.departement);
-        console.log('Current user nomdepartement:', this.currentUser?.nomdepartement);
-        console.log('Current user structure:', JSON.stringify(this.currentUser, null, 2));
-      } catch (err) {
-        console.error('Error fetching current user:', err);
-      }
     }
+    // Removed fetchCurrentUser method
   },
   created() {
-    this.fetchCurrentUser();
+    // Removed call to fetchCurrentUser
   }
 }
 </script>

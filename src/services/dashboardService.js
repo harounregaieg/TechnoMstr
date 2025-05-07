@@ -4,10 +4,16 @@ const API_URL = 'http://localhost:3000/api';
 
 /**
  * Fetch equipment statistics
+ * @param {string} departement - Optional department to filter statistics by
  */
-export const fetchEquipmentStats = async () => {
+export const fetchEquipmentStats = async (departement) => {
   try {
-    const response = await axios.get(`${API_URL}/dashboard/equipment-stats`);
+    const params = {};
+    if (departement) {
+      params.departement = departement;
+    }
+    
+    const response = await axios.get(`${API_URL}/dashboard/equipment-stats`, { params });
     return response.data;
   } catch (error) {
     console.error('Error fetching equipment statistics:', error);
@@ -33,11 +39,18 @@ export const fetchUserStats = async (departement) => {
 
 /**
  * Fetch and calculate equipment status statistics
+ * @param {string} departement - Optional department to filter by
  */
-export const fetchEquipmentStatusStats = async () => {
+export const fetchEquipmentStatusStats = async (departement = null) => {
   try {
     const response = await axios.get(`${API_URL}/equipment`);
-    const equipment = response.data;
+    let equipment = response.data;
+    
+    // Filter by department if specified and not TechnoCode
+    if (departement && departement !== 'TechnoCode') {
+      console.log(`Filtering equipment by department: ${departement}`);
+      equipment = equipment.filter(item => item.departement === departement);
+    }
     
     let ok = 0;
     let warning = 0;
@@ -74,11 +87,18 @@ export const fetchEquipmentStatusStats = async () => {
 
 /**
  * Fetch and calculate brand distribution statistics
+ * @param {string} departement - Optional department to filter by
  */
-export const fetchBrandStats = async () => {
+export const fetchBrandStats = async (departement = null) => {
   try {
     const response = await axios.get(`${API_URL}/equipment`);
-    const equipment = response.data;
+    let equipment = response.data;
+    
+    // Filter by department if specified and not TechnoCode
+    if (departement && departement !== 'TechnoCode') {
+      console.log(`Filtering equipment brands by department: ${departement}`);
+      equipment = equipment.filter(item => item.departement === departement);
+    }
     
     // Initialize counters for each brand
     const brands = {
@@ -197,13 +217,18 @@ export const fetchRecentActivity = async (limit = 3) => {
 /**
  * Fetch printer command history data grouped by day
  * @param {number} days - Number of days to look back
+ * @param {string} departement - Optional department to filter by
  */
-export const fetchCommandHistory = async (days = 7) => {
+export const fetchCommandHistory = async (days = 7, departement = null) => {
   try {
-    console.log(`Fetching command history for the last ${days} days`);
-    const response = await axios.get(`${API_URL}/dashboard/commands-history`, {
-      params: { days }
-    });
+    console.log(`Fetching command history for the last ${days} days${departement ? ` for department: ${departement}` : ''}`);
+    
+    const params = { days };
+    if (departement) {
+      params.departement = departement;
+    }
+    
+    const response = await axios.get(`${API_URL}/dashboard/commands-history`, { params });
     
     // Day mapping from English to French
     const dayMapping = {
@@ -264,11 +289,18 @@ export const fetchCommandHistory = async (days = 7) => {
 
 /**
  * Fetch equipment counts by type (printers and PDAs)
+ * @param {string} departement - Optional department to filter by
  */
-export const fetchEquipmentTypeStats = async () => {
+export const fetchEquipmentTypeStats = async (departement = null) => {
   try {
     const response = await axios.get(`${API_URL}/equipment`);
-    const equipment = response.data;
+    let equipment = response.data;
+    
+    // Filter by department if specified and not TechnoCode
+    if (departement && departement !== 'TechnoCode') {
+      console.log(`Filtering equipment types by department: ${departement}`);
+      equipment = equipment.filter(item => item.departement === departement);
+    }
     
     let printers = 0;
     let pdas = 0;
@@ -296,13 +328,18 @@ export const fetchEquipmentTypeStats = async () => {
 /**
  * Fetch ticket creation history data grouped by day
  * @param {number} days - Number of days to look back
+ * @param {string} departement - Optional department to filter by
  */
-export const fetchTicketHistory = async (days = 7) => {
+export const fetchTicketHistory = async (days = 7, departement = null) => {
   try {
-    console.log(`Fetching ticket history for the last ${days} days`);
-    const response = await axios.get(`${API_URL}/dashboard/ticket-history`, {
-      params: { days }
-    });
+    console.log(`Fetching ticket history for the last ${days} days${departement ? ` for department: ${departement}` : ''}`);
+    
+    const params = { days };
+    if (departement) {
+      params.departement = departement;
+    }
+    
+    const response = await axios.get(`${API_URL}/dashboard/ticket-history`, { params });
     
     // Day mapping from English to French
     const dayMapping = {

@@ -56,6 +56,14 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { fetchTicketHistory } from '../../services/dashboardService';
 
+// Props - accept department from parent component
+const props = defineProps({
+  userDepartment: {
+    type: String,
+    default: ''
+  }
+});
+
 // State
 const ticketData = ref([
   { name: 'Lun', count: 0 },
@@ -76,9 +84,9 @@ const fetchTicketsData = async () => {
   error.value = null;
   
   try {
-    console.log('Fetching ticket history data...');
-    // Use the service function
-    const data = await fetchTicketHistory(daysToFetch.value);
+    console.log('Fetching ticket history data for department:', props.userDepartment || 'All');
+    // Use the service function and pass the user's department
+    const data = await fetchTicketHistory(daysToFetch.value, props.userDepartment);
     
     if (data && Array.isArray(data)) {
       console.log('Received ticket history data:', data);
@@ -123,8 +131,8 @@ const yAxisTicks = computed(() => {
   return ticks.reverse(); // Reverse for top-to-bottom display
 });
 
-// Watch for changes in the data source
-watch(daysToFetch, () => {
+// Watch for changes in the data source or department
+watch([daysToFetch, () => props.userDepartment], () => {
   fetchTicketsData();
 });
 

@@ -74,53 +74,51 @@ class PrinterController {
     }
 
     updatePrinterContrast = async (idequipement, contrastValue) => {
-        try {
-            // First get the IP address from local database
-            const getIpQuery = `
-                SELECT ipadresse 
-                FROM equipement 
-                WHERE idequipement = $1
-            `;
-            const ipResult = await localPool.query(getIpQuery, [idequipement]);
-            
-            if (!ipResult.rows.length) {
-                throw new Error('Equipment not found in local database');
-            }
-
-            const ipAdresse = ipResult.rows[0].ipadresse;
-            console.log('Found IP address:', ipAdresse);
-
-            // Update query using IP address
-            const updateQuery = `
-                UPDATE imprimante i
-                SET contrast = $1
-                FROM equipement e
-                WHERE i.idequipement = e.idequipement
-                AND e.ipadresse = $2
-                RETURNING i.*
-            `;
-
-            console.log('Attempting to update local database...');
-            const localResult = await localPool.query(updateQuery, [contrastValue, ipAdresse]);
-            console.log('Local database update successful:', localResult.rows[0]);
-
-            console.log('Attempting to update cloud database...');
-            const cloudResult = await cloudPool.query(updateQuery, [contrastValue, ipAdresse]);
-            console.log('Cloud database update successful:', cloudResult.rows[0]);
-
-            return {
-                local: localResult.rows[0],
-                cloud: cloudResult.rows[0]
-            };
-        } catch (error) {
-            console.error('Error updating printer contrast:', error);
-            if (error.message.includes('cloud')) {
-                console.error('Cloud database update failed:', error.message);
-            } else {
-                console.error('Local database update failed:', error.message);
-            }
-            throw error;
+        // First get the IP address from local database
+        const getIpQuery = `
+            SELECT ipadresse 
+            FROM equipement 
+            WHERE idequipement = $1
+        `;
+        const ipResult = await localPool.query(getIpQuery, [idequipement]);
+        
+        if (!ipResult.rows.length) {
+            throw new Error('Equipment not found in local database');
         }
+
+        const ipAdresse = ipResult.rows[0].ipadresse;
+        console.log('Found IP address:', ipAdresse);
+
+        // Update query using IP address
+        const updateQuery = `
+            UPDATE imprimante i
+            SET contrast = $1
+            FROM equipement e
+            WHERE i.idequipement = e.idequipement
+            AND e.ipadresse = $2
+            RETURNING i.*
+        `;
+
+        console.log('Attempting to update local database...');
+        const localResult = await localPool.query(updateQuery, [contrastValue, ipAdresse]);
+        console.log('Local database update successful:', localResult.rows[0]);
+
+        let cloudResult = null;
+        let cloudError = null;
+        try {
+            console.log('Attempting to update cloud database...');
+            cloudResult = await cloudPool.query(updateQuery, [contrastValue, ipAdresse]);
+            console.log('Cloud database update successful:', cloudResult.rows[0]);
+        } catch (error) {
+            cloudError = error.message || 'Unknown error';
+            console.error('Cloud database update failed:', cloudError);
+        }
+
+        return {
+            local: localResult.rows[0],
+            cloud: cloudResult ? cloudResult.rows[0] : null,
+            cloudError
+        };
     }
 
     changeTemperature = async (req, res) => {

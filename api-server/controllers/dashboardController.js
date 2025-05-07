@@ -7,8 +7,9 @@ const User = require('../models/userModel');
  */
 exports.getEquipmentStats = async (req, res) => {
   try {
-    console.log('Fetching equipment statistics');
-    const stats = await equipmentRepository.getEquipmentStatistics();
+    const { departement } = req.query;
+    console.log(`Fetching equipment statistics for department: ${departement || 'All'}`);
+    const stats = await equipmentRepository.getEquipmentStatistics(departement);
     console.log('Equipment stats result:', stats);
     res.json(stats);
   } catch (error) {
@@ -97,25 +98,46 @@ exports.getCommandHistory = async (req, res) => {
 exports.getCommandsHistory = async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 7;
-    console.log(`Getting command history for the last ${days} days`);
+    const departement = req.query.departement;
+    
+    console.log(`Getting command history for the last ${days} days${departement ? ` for department: ${departement}` : ''}`);
     
     const { localPool } = require('../config/db');
     
-    // Use the actual table structure as seen in the screenshot
-    const query = `
+    // Base query for command history
+    let query = `
       SELECT 
-        EXTRACT(DOW FROM executed_at) as dow,
-        TO_CHAR(executed_at, 'Dy') as day,
+        EXTRACT(DOW FROM a.executed_at) as dow,
+        TO_CHAR(a.executed_at, 'Dy') as day,
         COUNT(*) as count
-      FROM action
-      WHERE executed_at >= NOW() - INTERVAL '${days} days'
+      FROM action a
+    `;
+    
+    // If department filter is provided and not TechnoCode, join with equipment table
+    const params = [];
+    if (departement && departement !== 'TechnoCode') {
+      query += `
+        JOIN equipement e ON a.idequipement = e.idequipement
+        WHERE a.executed_at >= NOW() - INTERVAL '${days} days'
+        AND e.departement = $1
+      `;
+      params.push(departement);
+    } else {
+      query += `
+        WHERE a.executed_at >= NOW() - INTERVAL '${days} days'
+      `;
+    }
+    
+    // Complete the query with group by and order by
+    query += `
       GROUP BY dow, day
       ORDER BY dow
     `;
     
     console.log('Executing query:', query);
+    console.log('Query params:', params);
     
-    const result = await localPool.query(query);
+    const result = await localPool.query(query, params);
     console.log(`Query returned ${result.rows.length} rows:`, result.rows);
     
     // If no data is found, create a default dataset
@@ -240,23 +262,47 @@ async function getAvailableTables(pool) {
 exports.getTicketHistory = async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 7;
-    console.log(`Getting ticket history for the last ${days} days`);
+    const departement = req.query.departement;
     
-    // Query to get ticket count by day from the ticket table
-    const query = `
+    console.log(`Getting ticket history for the last ${days} days${departement ? ` for department: ${departement}` : ''}`);
+    
+    // Base query for ticket count by day
+    let query = `
       SELECT 
-        EXTRACT(DOW FROM created_at) as dow,
-        TO_CHAR(created_at, 'Dy') as day,
+        EXTRACT(DOW FROM t.created_at) as dow,
+        TO_CHAR(t.created_at, 'Dy') as day,
         COUNT(*) as count
-      FROM ticket
-      WHERE created_at >= NOW() - INTERVAL '${days} days'
+      FROM ticket t
+    `;
+    
+    // If department filter is provided and not TechnoCode, join with equipment table
+    const params = [];
+    if (departement && departement !== 'TechnoCode') {
+      // The ticket has serialnumber, but equipment doesn't have a serialnumber column directly
+      // We need to join through the imprimante table
+      query += `
+        LEFT JOIN imprimante i ON i.serialnumber = t.serialnumber
+        LEFT JOIN equipement e ON i.idequipement = e.idequipement
+        WHERE t.created_at >= NOW() - INTERVAL '${days} days'
+        AND (e.departement = $1)
+      `;
+      params.push(departement);
+    } else {
+      query += `
+        WHERE t.created_at >= NOW() - INTERVAL '${days} days'
+      `;
+    }
+    
+    // Complete the query with group by and order by
+    query += `
       GROUP BY dow, day
       ORDER BY dow
     `;
     
     console.log('Executing ticket history query:', query);
+    console.log('Query params:', params);
     
-    const result = await localPool.query(query);
+    const result = await localPool.query(query, params);
     console.log(`Query returned ${result.rows.length} rows:`, result.rows);
     
     // If no data is found, create a default dataset

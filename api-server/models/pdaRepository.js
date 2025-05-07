@@ -80,18 +80,30 @@ async function addPda(pdaData) {
  * @returns {Promise<Object>} - Added application
  */
 async function addApplication(packageName) {
-  const query = `
-    INSERT INTO application (packagename)
-    VALUES ($1)
-    ON CONFLICT (packagename) DO UPDATE SET packagename = $1
-    RETURNING idapp, packagename
-  `;
-  const values = [packageName];
-  
   try {
-    const result = await localPool.query(query, values);
-    console.log('Application added or found:', result.rows[0]);
-    return result.rows[0];
+    // First check if the application already exists
+    const checkQuery = `
+      SELECT idapp, packagename
+      FROM application
+      WHERE packagename = $1
+    `;
+    const checkResult = await localPool.query(checkQuery, [packageName]);
+    
+    if (checkResult.rows.length > 0) {
+      // Application already exists, just return it
+      console.log('Application already exists:', checkResult.rows[0]);
+      return checkResult.rows[0];
+    } else {
+      // Application doesn't exist, insert it
+      const insertQuery = `
+        INSERT INTO application (packagename)
+        VALUES ($1)
+        RETURNING idapp, packagename
+      `;
+      const insertResult = await localPool.query(insertQuery, [packageName]);
+      console.log('Application added:', insertResult.rows[0]);
+      return insertResult.rows[0];
+    }
   } catch (error) {
     console.error('Error adding application:', error);
     throw error;
@@ -105,17 +117,29 @@ async function addApplication(packageName) {
  * @returns {Promise<Object>} - Added link
  */
 async function linkPdaToApplication(pdaId, appId) {
-  const query = `
-    INSERT INTO pda_application (idpda, idapp)
-    VALUES ($1, $2)
-    ON CONFLICT (idpda, idapp) DO NOTHING
-    RETURNING *
-  `;
-  const values = [pdaId, appId];
-  
   try {
-    const result = await localPool.query(query, values);
-    return result.rowCount > 0 ? result.rows[0] : { message: 'Link already exists' };
+    // Check if the link already exists
+    const checkQuery = `
+      SELECT idpda, idapp
+      FROM pda_application
+      WHERE idpda = $1 AND idapp = $2
+    `;
+    const checkResult = await localPool.query(checkQuery, [pdaId, appId]);
+    
+    if (checkResult.rows.length > 0) {
+      // Link already exists
+      return { message: 'Link already exists', exists: true };
+    }
+    
+    // If not, create the link
+    const insertQuery = `
+      INSERT INTO pda_application (idpda, idapp)
+      VALUES ($1, $2)
+      RETURNING *
+    `;
+    const insertResult = await localPool.query(insertQuery, [pdaId, appId]);
+    console.log(`Linked PDA ${pdaId} to application ${appId}`);
+    return insertResult.rows[0];
   } catch (error) {
     console.error('Error linking PDA to application:', error);
     throw error;
@@ -171,6 +195,45 @@ async function storeApplicationsForPda(pdaId, packageNames) {
   }
 }
 
+/**
+ * Get a PDA with all its installed applications
+ * @param {number} pdaId - The PDA ID
+ * @returns {Promise<Object>} - PDA with applications
+ */
+async function getPdaWithApplications(pdaId) {
+  try {
+    // Get PDA information
+    const pdaQuery = `
+      SELECT p.*, e.ipadresse, e.disponibilite, e.modele, 
+             eb.typeCharge, eb.niveauCharge,
+             es.stockageTotale, es.stockageLibre
+      FROM pda p
+      JOIN equipement e ON p.id = e.idequipement
+      JOIN etat_batterie eb ON p.idBatterie = eb.idBatterie
+      JOIN etat_stockage es ON p.idStockage = es.idStockage
+      WHERE p.id = $1
+    `;
+    const pdaResult = await localPool.query(pdaQuery, [pdaId]);
+    
+    if (pdaResult.rows.length === 0) {
+      return null;
+    }
+    
+    const pda = pdaResult.rows[0];
+    
+    // Get applications for this PDA
+    const apps = await getPdaApplications(pdaId);
+    
+    return {
+      ...pda,
+      applications: apps.map(app => app.packagename)
+    };
+  } catch (error) {
+    console.error('Error getting PDA with applications:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   addBatteryStatus,
   addStorageStatus,
@@ -178,5 +241,6 @@ module.exports = {
   addApplication,
   linkPdaToApplication,
   getPdaApplications,
-  storeApplicationsForPda
+  storeApplicationsForPda,
+  getPdaWithApplications
 }; 

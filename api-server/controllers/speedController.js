@@ -76,105 +76,57 @@ class SpeedController {
     }
 
     updatePrinterSpeed = async (idequipement, speedValue) => {
-        try {
-            // First get the IP address from local database
-            const getIpQuery = `
-                SELECT ipadresse 
-                FROM equipement 
-                WHERE idequipement = $1
-            `;
-            const ipResult = await localPool.query(getIpQuery, [idequipement]);
-            
-            if (!ipResult.rows.length) {
-                throw new Error('Equipment not found in local database');
-            }
-
-            const ipAdresse = ipResult.rows[0].ipadresse;
-            console.log('Found IP address:', ipAdresse);
-
-            // First check if printer exists in cloud database
-            const checkCloudQuery = `
-                SELECT i.vitesse, i.idequipement, e.ipadresse
-                FROM imprimante i
-                JOIN equipement e ON i.idequipement = e.idequipement
-                WHERE e.ipadresse = $1
-            `;
-            console.log('Checking printer in cloud database...');
-            const cloudCheck = await cloudPool.query(checkCloudQuery, [ipAdresse]);
-            console.log('Cloud database check result:', cloudCheck.rows[0]);
-
-            if (!cloudCheck.rows.length) {
-                console.log('Printer not found in cloud database with IP:', ipAdresse);
-                // Try to find the printer in cloud database by listing all printers
-                const listPrintersQuery = `
-                    SELECT i.vitesse, i.idequipement, e.ipadresse
-                    FROM imprimante i
-                    JOIN equipement e ON i.idequipement = e.idequipement
-                `;
-                console.log('Listing all printers in cloud database...');
-                const allPrinters = await cloudPool.query(listPrintersQuery);
-                console.log('All printers in cloud database:', allPrinters.rows);
-                return {
-                    local: null,
-                    cloud: null,
-                    error: 'Printer not found in cloud database',
-                    cloud_printers: allPrinters.rows
-                };
-            }
-
-            // Update local database using idequipement
-            const localUpdateQuery = `
-                UPDATE imprimante 
-                SET vitesse = $1 
-                WHERE idequipement = $2
-                RETURNING *
-            `;
-            console.log('Attempting to update local database...');
-            console.log('Local update query:', localUpdateQuery);
-            console.log('Local update parameters:', [speedValue, idequipement]);
-            const localResult = await localPool.query(localUpdateQuery, [speedValue, idequipement]);
-            console.log('Local database update successful:', localResult.rows[0]);
-
-            // Update cloud database using IP address
-            const cloudUpdateQuery = `
-                UPDATE imprimante i
-                SET vitesse = $1
-                FROM equipement e
-                WHERE i.idequipement = e.idequipement
-                AND e.ipadresse = $2
-                RETURNING i.*
-            `;
-            console.log('Attempting to update cloud database...');
-            console.log('Cloud update query:', cloudUpdateQuery);
-            console.log('Cloud update parameters:', [speedValue, ipAdresse]);
-            const cloudResult = await cloudPool.query(cloudUpdateQuery, [speedValue, ipAdresse]);
-            console.log('Cloud database update result:', cloudResult);
-
-            // Verify the update in cloud database
-            const verifyQuery = `
-                SELECT i.vitesse, i.idequipement, e.ipadresse
-                FROM imprimante i
-                JOIN equipement e ON i.idequipement = e.idequipement
-                WHERE e.ipadresse = $1
-            `;
-            console.log('Verifying cloud database update...');
-            const verifyResult = await cloudPool.query(verifyQuery, [ipAdresse]);
-            console.log('Cloud database verification result:', verifyResult.rows[0]);
-
-            return {
-                local: localResult.rows[0],
-                cloud: cloudResult.rows[0],
-                verification: verifyResult.rows[0]
-            };
-        } catch (error) {
-            console.error('Error updating printer speed:', error);
-            if (error.message.includes('cloud')) {
-                console.error('Cloud database update failed:', error.message);
-            } else {
-                console.error('Local database update failed:', error.message);
-            }
-            throw error;
+        // First get the IP address from local database
+        const getIpQuery = `
+            SELECT ipadresse 
+            FROM equipement 
+            WHERE idequipement = $1
+        `;
+        const ipResult = await localPool.query(getIpQuery, [idequipement]);
+        
+        if (!ipResult.rows.length) {
+            throw new Error('Equipment not found in local database');
         }
+
+        const ipAdresse = ipResult.rows[0].ipadresse;
+        console.log('Found IP address:', ipAdresse);
+
+        // Update local database using idequipement
+        const localUpdateQuery = `
+            UPDATE imprimante 
+            SET vitesse = $1 
+            WHERE idequipement = $2
+            RETURNING *
+        `;
+        console.log('Attempting to update local database...');
+        const localResult = await localPool.query(localUpdateQuery, [speedValue, idequipement]);
+        console.log('Local database update successful:', localResult.rows[0]);
+
+        // Update cloud database using IP address
+        const cloudUpdateQuery = `
+            UPDATE imprimante i
+            SET vitesse = $1
+            FROM equipement e
+            WHERE i.idequipement = e.idequipement
+            AND e.ipadresse = $2
+            RETURNING i.*
+        `;
+        let cloudResult = null;
+        let cloudError = null;
+        try {
+            console.log('Attempting to update cloud database...');
+            cloudResult = await cloudPool.query(cloudUpdateQuery, [speedValue, ipAdresse]);
+            console.log('Cloud database update result:', cloudResult.rows[0]);
+        } catch (error) {
+            cloudError = error.message || 'Unknown error';
+            console.error('Cloud database update failed:', cloudError);
+        }
+
+        return {
+            local: localResult.rows[0],
+            cloud: cloudResult ? cloudResult.rows[0] : null,
+            cloudError
+        };
     }
 
     changeSpeed = async (req, res) => {

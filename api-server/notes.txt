@@ -4,5 +4,6 @@ when restarting pc/app, run adb connect <DEVICE_IP>:5555 to re-establih connecti
 2)adb connect <DEVICE_IP>:5555
 
 1)conncet via usb
+adb devices
 2)adb -s <SERIAL NUMBER> tcpip 5555
 3)adb connect <IP ADDRESS>:5555

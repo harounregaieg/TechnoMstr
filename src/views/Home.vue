@@ -22,10 +22,10 @@
         <BrandDistributionChart :brand-stats="brandStats" />
   
         <!-- Commands History Chart -->
-        <CommandsHistoryChart />
+        <CommandsHistoryChart :userDepartment="currentUser?.departement" />
   
         <!-- Ticket History Chart -->
-        <TicketHistoryChart />
+        <TicketHistoryChart :userDepartment="currentUser?.departement" />
   
         <!-- Recent Activity Feed -->
         <ActivityFeed :activities="activities" />
@@ -103,7 +103,12 @@
       const userStr = localStorage.getItem('user');
       if (userStr) {
         currentUser.value = JSON.parse(userStr);
+        console.log('Current user department:', currentUser.value.departement);
       }
+      
+      // Get the user's department
+      const userDepartment = currentUser.value?.departement || '';
+      console.log('Filtering dashboard by department:', userDepartment || 'All');
       
       // Fetch all data in parallel for better performance
       const [
@@ -114,11 +119,11 @@
         brandStatsData,
         activitiesData
       ] = await Promise.all([
-        fetchEquipmentStats(),
-        fetchEquipmentTypeStats(),
-        fetchUserStats(currentUser.value?.departement || ''),
-        fetchEquipmentStatusStats(),
-        fetchBrandStats(),
+        fetchEquipmentStats(userDepartment),
+        fetchEquipmentTypeStats(userDepartment),
+        fetchUserStats(userDepartment),
+        fetchEquipmentStatusStats(userDepartment),
+        fetchBrandStats(userDepartment),
         fetchRecentActivity(3)
       ]);
       

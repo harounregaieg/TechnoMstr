@@ -32,7 +32,7 @@ async function getAdbDevices() {
 async function getInstalledApps(ip) {
     /** Get installed applications from a device */
     try {
-        const { stdout } = await exec(`adb -s ${ip}:5555 shell pm list packages -3`);
+        const { stdout } = await exec(`adb -s ${ip}:5555 shell pm list packages`);
         const apps = [];
         
         // Parse the output to get package names

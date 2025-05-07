@@ -70,6 +70,25 @@ const API_URL = 'http://localhost:3000/api'; // Adjust if your API is hosted els
 const users = ref([]);
 const isLoading = ref(true);
 const error = ref(null);
+const currentUser = ref(null);
+const isTechnoCodeUser = ref(false);
+
+// Fetch current user
+const fetchCurrentUser = async () => {
+  try {
+    currentUser.value = await userApi.getCurrentUser();
+    isTechnoCodeUser.value = currentUser.value.departement === "TechnoCode";
+    console.log("Current user department:", currentUser.value.departement);
+    console.log("Is TechnoCode user:", isTechnoCodeUser.value);
+    
+    // After fetching current user, fetch users list
+    await fetchUsers();
+  } catch (err) {
+    console.error("Failed to load current user:", err);
+    error.value = "Failed to load user data";
+    isLoading.value = false;
+  }
+};
 
 // Fetch users from the API
 const fetchUsers = async () => {
@@ -83,9 +102,9 @@ const fetchUsers = async () => {
   }
 };
 
-// Call fetchUsers when the component is mounted
+// Call fetchCurrentUser when the component is mounted
 onMounted(() => {
-  fetchUsers();
+  fetchCurrentUser();
 });
 
 const handleAddUser = () => {
@@ -108,9 +127,14 @@ const sortDirection = ref("asc");
 const currentPage = ref(1);
 const itemsPerPage = 10;
 
-// Filter users based on search query
+// Filter users based on search query and current user's department
 const filteredUsers = computed(() => {
   let filtered = users.value;
+  
+  // Filter by department if not TechnoCode
+  if (!isTechnoCodeUser.value && currentUser.value?.departement) {
+    filtered = filtered.filter(user => user.departement === currentUser.value.departement);
+  }
   
   // Filter by search query
   if (searchQuery.value.trim()) {

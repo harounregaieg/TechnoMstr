@@ -166,7 +166,8 @@
   </template>
   
   <script setup>
-  import { ref, computed } from 'vue';
+  import { ref, computed, onMounted, watch } from 'vue';
+  import { userApi } from '../services/userApi';
 
   const props = defineProps({
     modelValue: {
@@ -194,6 +195,7 @@
   const showDetailsModal = ref(false);
   const selectedDevice = ref({});
   const selectedDeviceIp = ref('');
+  const currentUserDepartment = ref('');
 
   const devices = computed(() => props.printers);
   const deviceCount = computed(() => Object.keys(devices.value || {}).length);
@@ -232,6 +234,18 @@
     return result;
   });
 
+  // Fetch user department when modal opens
+  watch(() => props.modelValue, async (val) => {
+    if (val) {
+      try {
+        const user = await userApi.getCurrentUser();
+        currentUserDepartment.value = user.departement || user.nomdepartement || '';
+      } catch (e) {
+        currentUserDepartment.value = '';
+      }
+    }
+  });
+
   const closeModal = () => {
     emit('update:modelValue', false);
     emit('close');
@@ -240,14 +254,9 @@
   const addDevice = async (ip, device) => {
     try {
       addingDevices.value.add(ip);
-      let payload = { ip, ...device };
+      let payload = { ip, ...device, departement: currentUserDepartment.value };
       if (device.type === 'PDA') {
-        // Add debug output for serialnumber
-        console.log(`DEBUG: PDA serialnumber before setting: ${device.serialnumber || 'undefined/null'}`);
-        console.log(`DEBUG: Full PDA device object:`, device);
-        
-        payload.serialnumber = device.serialnumber || '';
-        console.log(`DEBUG: PDA payload serialnumber after setting: ${payload.serialnumber}`);
+        payload.serialnumber = device.serialnumber || device.serialNumber || '';
       }
       await emit('add-printer', payload);
     } finally {

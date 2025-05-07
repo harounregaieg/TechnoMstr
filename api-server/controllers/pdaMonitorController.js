@@ -163,20 +163,16 @@ class PdaMonitorController {
             const ipAdresse = ipResult.rows[0].ipadresse;
             console.log(`Updating status for PDA IP: ${ipAdresse}, New Status: ${newStatus}`);
 
-            // Start transactions for both databases
+            // Start transaction for local database only
             await localPool.query('BEGIN');
-            await cloudPool.query('BEGIN');
-
             try {
-                // Update equipment status in both databases using IP address
+                // Update equipment status in local database using IP address
                 const equipmentQuery = `
                     UPDATE equipement 
                     SET disponibilite = $1 
                     WHERE ipadresse = $2
                 `;
-                
                 await localPool.query(equipmentQuery, [newStatus, ipAdresse]);
-                await cloudPool.query(equipmentQuery, [newStatus, ipAdresse]);
 
                 // If we have new battery and storage info, update them
                 if (batteryInfo && storageInfo) {
@@ -187,11 +183,9 @@ class PdaMonitorController {
                         JOIN equipement e ON p.id = e.idequipement
                         WHERE e.ipadresse = $1
                     `;
-                    
                     const pdaResult = await localPool.query(getPdaIdQuery, [ipAdresse]);
                     if (pdaResult.rows.length > 0) {
                         const { id, idbatterie, idstockage } = pdaResult.rows[0];
-                        
                         // Update battery status
                         const batteryQuery = `
                             UPDATE etat_batterie
@@ -200,9 +194,9 @@ class PdaMonitorController {
                             WHERE idbatterie = $3
                         `;
                         await localPool.query(batteryQuery, [batteryInfo.typeCharge, batteryInfo.niveauCharge, idbatterie]);
-                        
                         // Update storage status
-                        const storageQuery = `                            UPDATE etat_stockage
+                        const storageQuery = `
+                            UPDATE etat_stockage
                             SET stockageTotale = $1,
                                 stockageLibre = $2
                             WHERE idstockage = $3
@@ -211,15 +205,13 @@ class PdaMonitorController {
                     }
                 }
 
-                // Commit both transactions
+                // Commit local transaction
                 await localPool.query('COMMIT');
-                await cloudPool.query('COMMIT');
-                console.log('Both transactions committed successfully');
+                console.log('Local transaction committed successfully');
             } catch (error) {
-                // Rollback both transactions in case of error
+                // Rollback local transaction in case of error
                 await localPool.query('ROLLBACK');
-                await cloudPool.query('ROLLBACK');
-                console.error('Error during database updates:', error);
+                console.error('Error during local database updates:', error);
                 throw error;
             }
         } catch (error) {

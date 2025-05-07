@@ -7,6 +7,7 @@
         <div class="header-cell">Type</div>
         <div class="header-cell">Marque</div>
         <div class="header-cell">Numéro de série</div>
+        <div class="header-cell">Département</div>
         <div class="header-cell actions">Actions</div>
       </header>
   
@@ -15,8 +16,9 @@
              class="table-row" 
              :class="{ 
                'clickable': true,
-               'row-available': equipment.disponibilite && (equipment.type === 'PDA' || equipment.printer_status === 'READY'),
-               'row-warning': equipment.disponibilite && equipment.printer_status === 'PAUSED' && !equipment.status_message?.toUpperCase().includes('ERROR'),
+               'row-available': equipment.disponibilite && (equipment.type === 'PDA' || equipment.printer_status === 'READY') && !(equipment.type === 'PDA' && equipment.batteryLevel < 15),
+               'row-warning': (equipment.disponibilite && equipment.printer_status === 'PAUSED' && !equipment.status_message?.toUpperCase().includes('ERROR')) || 
+                             (equipment.type === 'PDA' && equipment.batteryLevel < 15),
                'row-unavailable': !equipment.disponibilite || (equipment.type !== 'PDA' && (equipment.printer_status === 'OFFLINE' || (equipment.printer_status === 'PAUSED' && equipment.status_message?.toUpperCase().includes('ERROR'))))
              }"
              @click="showEquipmentDetails(equipment.idequipement)">
@@ -24,6 +26,11 @@
             <div class="cell-content">
               <span class="status-indicator" :class="getStatusClass(equipment)"></span>
               {{ equipment.modele }}
+              <span v-if="equipment.type === 'PDA' && equipment.batteryLevel !== null" 
+                    class="battery-indicator"
+                    :class="{'low-battery': equipment.batteryLevel < 15}">
+                {{ equipment.batteryLevel }}%
+              </span>
             </div>
           </div>
           <div class="table-cell">{{ equipment.ipadresse }}</div>
@@ -34,6 +41,12 @@
           </div>
           <div class="table-cell">{{ equipment.marque || '-' }}</div>
           <div class="table-cell">{{ equipment.serialnumber || '-' }}</div>
+          <div class="table-cell department-cell">
+            <span class="department-badge" v-if="equipment.departement">
+              {{ equipment.departement }}
+            </span>
+            <span v-else>-</span>
+          </div>
           <div class="table-cell actions" @click.stop>
             <div class="ellipsis-menu" @click.stop>
               <button class="ellipsis-button" @click="toggleMenu(index)">
@@ -79,6 +92,7 @@
 import { ref, onMounted, watch, computed, onUnmounted } from 'vue';
 import EquipmentDetails from './EquipmentDetails.vue';
 import { useRouter } from 'vue-router';
+import { userApi } from '../../services/userApi';
 
 export default {
   name: "EquipmentTable",
@@ -108,9 +122,23 @@ export default {
     const selectedEquipmentId = ref(null);
     const router = useRouter();
     const refreshInterval = ref(null);
+    const currentUser = ref(null);
 
     const isPrinterPaused = (equipment) => {
       return equipment.printer?.printerStatus === 'PAUSED';
+    };
+
+    // Function to load the current user
+    const fetchCurrentUser = async () => {
+      try {
+        currentUser.value = await userApi.getCurrentUser();
+        const isTechnoCode = currentUser.value.departement === "TechnoCode";
+        console.log('Current user loaded:', currentUser.value);
+        console.log('User department:', currentUser.value.departement);
+        console.log('Is TechnoCode user:', isTechnoCode);
+      } catch (err) {
+        console.error('Error loading current user:', err);
+      }
     };
 
     // Function to load equipment from the database
@@ -129,17 +157,34 @@ export default {
         console.log('Equipment data:', data);
         
         // Transform data to match the component's expected format
-        equipmentList.value = data.map(item => ({
-          idequipement: item.idequipement,
-          modele: item.modele,
-          ipadresse: item.ipadresse,
-          type: item.type || 'Printer',
-          disponibilite: item.disponibilite,
-          serialnumber: item.serialnumber,
-          marque: item.marque,
-          printer_status: item.printer_status,
-          status_message: item.status_message
-        }));
+        equipmentList.value = data.map(item => {
+          const departement = item.departement || item.nomdep || null;
+          console.log(`Equipment ${item.idequipement} (${item.modele}) department: ${departement}`);
+          
+          // For PDA devices, log battery level
+          if (item.type === 'PDA') {
+            console.log(`PDA ${item.idequipement} (${item.modele}) battery level: ${item.batteryLevel}`);
+          }
+          
+          return {
+            idequipement: item.idequipement,
+            modele: item.modele,
+            ipadresse: item.ipadresse,
+            type: item.type || 'Printer',
+            disponibilite: item.disponibilite,
+            serialnumber: item.serialnumber,
+            marque: item.marque,
+            printer_status: item.printer_status,
+            status_message: item.status_message,
+            departement: departement, // Add departement field
+            batteryLevel: item.batteryLevel || null, // Make sure batteryLevel is included
+            // Include other PDA specific properties
+            versionAndroid: item.versionAndroid,
+            batteryType: item.batteryType,
+            storageTotal: item.storageTotal,
+            storageFree: item.storageFree
+          };
+        });
       } catch (err) {
         console.error('Error loading equipment:', err);
         error.value = err.message;
@@ -213,7 +258,9 @@ export default {
     // Add click outside listener
     onMounted(() => {
       document.addEventListener('click', closeMenu);
-      loadEquipment();
+      fetchCurrentUser().then(() => {
+        loadEquipment();
+      });
       
       // Set up periodic refresh every 30 seconds
       refreshInterval.value = setInterval(() => {
@@ -234,9 +281,28 @@ export default {
       loadEquipment();
     });
     
-    // Filtered equipment based on search query
+    // Filtered equipment based on search query and user's department
     const filteredEquipment = computed(() => {
       let filtered = equipmentList.value;
+      
+      // Filter by user's department if available and not from TechnoCode
+      if (currentUser.value && currentUser.value.departement) {
+        const userDepartment = currentUser.value.departement || currentUser.value.nomdepartement;
+        const isTechnoCodeUser = userDepartment === "TechnoCode";
+        
+        console.log('User department:', userDepartment);
+        console.log('Is TechnoCode user:', isTechnoCodeUser);
+        
+        // Only filter by department if user is not from TechnoCode
+        if (!isTechnoCodeUser) {
+          console.log('Filtering by department:', userDepartment);
+          filtered = filtered.filter(equipment => {
+            return equipment.departement === userDepartment;
+          });
+        } else {
+          console.log('User is from TechnoCode, showing all equipment');
+        }
+      }
       
       // Apply search filter if there's a query
       if (props.searchQuery) {
@@ -245,6 +311,7 @@ export default {
           return equipment.modele.toLowerCase().includes(query) ||
                  equipment.ipadresse.toLowerCase().includes(query) ||
                  equipment.type.toLowerCase().includes(query) ||
+                 (equipment.departement && equipment.departement.toLowerCase().includes(query)) ||
                  (equipment.disponibilite ? 'disponible' : 'indisponible').includes(query);
         });
       }
@@ -277,6 +344,9 @@ export default {
       if (!equipment.disponibilite) {
         return 'status-offline';
       }
+      if (equipment.type === 'PDA' && equipment.batteryLevel < 15) {
+        return 'status-paused'; // Use the yellow status for low battery
+      }
       if (equipment.printer_status === 'PAUSED') {
         return 'status-paused';
       }
@@ -297,7 +367,8 @@ export default {
       deleteEquipment,
       createTicket,
       sendCommand,
-      getStatusClass
+      getStatusClass,
+      currentUser
     };
   }
 };
@@ -415,6 +486,34 @@ export default {
   
   &.status-offline {
     background-color: #ff1111;
+  }
+}
+
+.battery-indicator {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  background-color: #e2e8f0;
+  color: #1e293b;
+  font-weight: 500;
+  
+  &.low-battery {
+    background-color: #f59e0b;
+    color: #fff;
+    animation: pulse 2s infinite;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
   }
 }
 
@@ -544,5 +643,25 @@ export default {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.department-badge {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.department-cell {
+  flex: 1;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
 }
 </style>

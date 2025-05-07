@@ -9,6 +9,9 @@
           <span v-if="isRefreshing">Actualisation...</span>
           <span v-else>Actualiser le statut</span>
         </button>
+        <button class="settings-btn" @click="toggleSettingsModal">
+          <span>Intervalle Automatique ({{ formattedInterval }})</span>
+        </button>
         <ActionButtons @scan-start="startScan" :is-scanning="isScanning" />
       </div>
     </div>
@@ -28,6 +31,45 @@
       @scan-again="startScan"
       @add-printer="handleAddPrinter"
     />
+
+    <!-- Settings Modal -->
+    <div v-if="showSettingsModal" class="settings-modal-overlay">
+      <div class="settings-modal">
+        <h3>Paramètres d'intervalle de scan</h3>
+        <div class="interval-setting">
+          <div class="current-value">
+            <span>Intervalle actuel: <strong>{{ formattedScanInterval }}</strong></span>
+          </div>
+          
+          <div class="input-container">
+            <label for="scan-interval">Entrez l'intervalle en secondes:</label>
+            <div class="number-input-wrapper">
+              <input 
+                type="number" 
+                id="scan-interval" 
+                v-model.number="scanInterval" 
+                min="10" 
+                max="300" 
+                step="1"
+                class="number-input"
+              />
+              <span class="input-unit">secondes</span>
+            </div>
+          </div>
+          
+          <div class="preset-buttons">
+            <button @click="scanInterval = 30" :class="{ active: scanInterval == 30 }">30s</button>
+            <button @click="scanInterval = 60" :class="{ active: scanInterval == 60 }">1min</button>
+            <button @click="scanInterval = 120" :class="{ active: scanInterval == 120 }">2min</button>
+            <button @click="scanInterval = 300" :class="{ active: scanInterval == 300 }">5min</button>
+          </div>
+        </div>
+        <div class="modal-buttons">
+          <button @click="saveSettings" class="save-btn">Sauvegarder</button>
+          <button @click="showSettingsModal = false" class="cancel-btn">Annuler</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -55,10 +97,91 @@ export default {
       isRefreshing: false,
       lastUpdate: null,
       scanAbortController: null,
-      existingIps: []
+      existingIps: [],
+      showSettingsModal: false,
+      scanInterval: 30,
+      currentScanInterval: 30
     };
   },
+  computed: {
+    formattedInterval() {
+      const interval = this.currentScanInterval;
+      if (interval < 60) {
+        return `${interval}s`;
+      } else if (interval === 60) {
+        return `1 min`;
+      } else {
+        const minutes = Math.floor(interval / 60);
+        const seconds = interval % 60;
+        return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes} min`;
+      }
+    },
+    formattedScanInterval() {
+      const interval = this.scanInterval;
+      if (interval < 60) {
+        return `${interval} secondes`;
+      } else if (interval === 60) {
+        return `1 minute`;
+      } else {
+        const minutes = Math.floor(interval / 60);
+        const seconds = interval % 60;
+        return seconds > 0 ? `${minutes} minutes et ${seconds} secondes` : `${minutes} minutes`;
+      }
+    }
+  },
   methods: {
+    toggleSettingsModal() {
+      this.showSettingsModal = !this.showSettingsModal;
+      if (this.showSettingsModal) {
+        this.fetchCurrentInterval();
+      }
+    },
+    async fetchCurrentInterval() {
+      try {
+        const response = await fetch('http://localhost:3000/api/monitor/interval');
+        if (response.ok) {
+          const data = await response.json();
+          this.scanInterval = data.intervalSeconds;
+          this.currentScanInterval = data.intervalSeconds;
+        }
+      } catch (error) {
+        console.error('Error fetching scan interval:', error);
+      }
+    },
+    async saveSettings() {
+      try {
+        // Validate input before saving
+        let intervalValue = parseInt(this.scanInterval);
+        
+        // Ensure it's within valid range
+        if (isNaN(intervalValue) || intervalValue < 10) {
+          intervalValue = 10;
+          this.scanInterval = 10;
+        } else if (intervalValue > 300) {
+          intervalValue = 300;
+          this.scanInterval = 300;
+        }
+        
+        const response = await fetch('http://localhost:3000/api/monitor/interval', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ intervalSeconds: intervalValue })
+        });
+        
+        if (response.ok) {
+          this.currentScanInterval = intervalValue;
+          this.showSettingsModal = false;
+          alert('Intervalle de scan mis à jour avec succès');
+        } else {
+          throw new Error('Failed to update scan interval');
+        }
+      } catch (error) {
+        console.error('Error saving scan interval:', error);
+        alert('Erreur lors de la mise à jour de l\'intervalle: ' + error.message);
+      }
+    },
     async fetchExistingIps() {
       try {
         const res = await fetch('http://localhost:3000/api/equipment');
@@ -205,7 +328,8 @@ export default {
                   manufacturer: device.manufacturer,
                   deviceName: device.deviceName,
                   batteryInfo: device.batteryInfo,
-                  storageInfo: device.storageInfo
+                  storageInfo: device.storageInfo,
+                  installedApps: device.installedApps || []
                 };
               });
             }
@@ -245,13 +369,14 @@ export default {
       console.log('Adding printer:', result);
       
       try {
-        // Format the data to match what the backend expects
+       
         const formattedData = {
           ip: result.ip,
+          departement: result.departement,
           printer: {
             type: result.type,
             printerType: result.printerType,
-            serialNumber: result.serialnumber || result.serialNumber, // Try both field names
+            serialNumber: result.serialnumber || result.serialNumber,
             model: result.model,
             status: result.status,
             resolution: result.resolution,
@@ -268,7 +393,8 @@ export default {
             manufacturer: result.manufacturer,
             deviceName: result.deviceName,
             batteryInfo: result.batteryInfo,
-            storageInfo: result.storageInfo
+            storageInfo: result.storageInfo,
+            installedApps: result.installedApps || []
           }
         };
 
@@ -374,6 +500,80 @@ export default {
   cursor: not-allowed;
 }
 
+.settings-btn {
+  padding: 8px 16px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-btn:hover {
+  background-color: #1976D2;
+  
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.settings-btn::before {  
+  font-size: 16px;
+}
+
+.settings-modal h3 {
+  color: #2196F3;
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 18px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 25px;
+}
+
+.save-btn {
+  padding: 10px 24px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.save-btn:hover {
+  background-color: #1976D2;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.cancel-btn {
+  padding: 10px 24px;
+  background-color: #f5f5f5;
+  color: #333;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+  background-color: #e0e0e0;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
 @media (max-width: 991px) {
   .controls {
     flex-direction: column;
@@ -384,5 +584,121 @@ export default {
     width: 100%;
     justify-content: space-between;
   }
+}
+
+/* Settings Modal Styles */
+.settings-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.settings-modal {
+  background-color: white;
+  border-radius: 8px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.interval-setting {
+  margin: 20px 0;
+}
+
+.current-value {
+  margin-bottom: 15px;
+  text-align: center;
+  font-size: 16px;
+}
+
+.current-value strong {
+  color: #2196F3;
+  font-size: 18px;
+}
+
+.input-container {
+  margin: 20px 0;
+}
+
+.input-container label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.number-input-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.number-input {
+  width: 120px;
+  padding: 10px 12px;
+  font-size: 16px;
+  text-align: center;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.number-input:focus {
+  border-color: #2196F3;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.2);
+}
+
+.number-input::-webkit-inner-spin-button, 
+.number-input::-webkit-outer-spin-button { 
+  opacity: 1;
+  height: 30px;
+}
+
+.input-unit {
+  margin-left: 8px;
+  font-size: 15px;
+  color: #666;
+  font-weight: 500;
+}
+
+.preset-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 15px;
+  justify-content: space-between;
+}
+
+.preset-buttons button {
+  flex: 1;
+  padding: 8px 0;
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.preset-buttons button:hover {
+  background-color: #e0e0e0;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.preset-buttons button.active {
+  background-color: #2196F3;
+  color: white;
+  border-color: #1976D2;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 </style>

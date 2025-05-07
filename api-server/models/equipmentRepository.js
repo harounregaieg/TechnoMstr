@@ -10,15 +10,18 @@ class EquipmentRepository {
    * @returns {Promise<Object>} The created equipment
    */
   async addEquipment(equipement) {
-    const { modele, ipAdresse, disponibilite = true, idParc = 1 } = equipement;
+    const { modele, ipAdresse, disponibilite = true, idParc = 1, departement } = equipement;
+    console.log('[addEquipment] Received values:', { modele, ipAdresse, disponibilite, idParc, departement });
     
     const query = `
-      INSERT INTO equipement (modele, ipAdresse, disponibilite, idParc)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO equipement (modele, ipAdresse, disponibilite, idParc, departement)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
     
-    const values = [modele, ipAdresse, disponibilite, idParc];
+    const values = [modele, ipAdresse, disponibilite, idParc, departement];
+    console.log('[addEquipment] Local insert query:', query);
+    console.log('[addEquipment] Local insert values:', values);
     
     try {
       // Add to local database
@@ -32,8 +35,8 @@ class EquipmentRepository {
         console.log('Attempting to add equipment to cloud database...');
         // For cloud, we need to explicitly set the idequipement to match the local one
         const cloudQuery = `
-          INSERT INTO equipement (idequipement, modele, ipAdresse, disponibilite, idParc)
-          VALUES ($1, $2, $3, $4, $5)
+          INSERT INTO equipement (idequipement, modele, ipAdresse, disponibilite, idParc, departement)
+          VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING *
         `;
         
@@ -42,8 +45,11 @@ class EquipmentRepository {
           modele, 
           ipAdresse, 
           disponibilite, 
-          idParc
+          idParc,
+          departement
         ];
+        console.log('[addEquipment] Cloud insert query:', cloudQuery);
+        console.log('[addEquipment] Cloud insert values:', cloudValues);
         
         const cloudResult = await this.queryWithTimeout(cloudPool, cloudQuery, cloudValues, 3000);
         cloudEquipment = cloudResult.rows[0];
@@ -62,14 +68,17 @@ class EquipmentRepository {
             // Try one more approach - directly set the ID
             try {
               const directQuery = `
-                INSERT INTO equipement (idequipement, modele, ipAdresse, disponibilite, idParc)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO equipement (idequipement, modele, ipAdresse, disponibilite, idParc, departement)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING *
               `;
+              const directValues = [localEquipment.idequipement, modele, ipAdresse, disponibilite, idParc, departement];
+              console.log('[addEquipment] Direct cloud insert query:', directQuery);
+              console.log('[addEquipment] Direct cloud insert values:', directValues);
               const directResult = await this.queryWithTimeout(
                 cloudPool, 
                 directQuery, 
-                [localEquipment.idequipement, modele, ipAdresse, disponibilite, idParc],
+                directValues,
                 2000
               );
               cloudEquipment = directResult.rows[0];
@@ -920,27 +929,43 @@ class EquipmentRepository {
 
   /**
    * Get equipment statistics including total count and active/inactive percentages
+   * @param {string} departement Optional department to filter by
    * @returns {Promise<Object>} Equipment statistics
    */
-  async getEquipmentStatistics() {
-    const query = `
+  async getEquipmentStatistics(departement) {
+    let query = `
       SELECT 
         COUNT(*) as total,
         COUNT(CASE WHEN disponibilite = true THEN 1 END) as active,
         COUNT(CASE WHEN disponibilite = false THEN 1 END) as inactive
       FROM equipement
     `;
+    
+    // Only filter by department if it's provided and not TechnoCode
+    const params = [];
+    if (departement && departement !== 'TechnoCode') {
+      query += ` WHERE departement = $1`;
+      params.push(departement);
+    }
 
     try {
-      const result = await localPool.query(query);
+      const result = await localPool.query(query, params);
       const stats = result.rows[0];
       
+      // Calculate percentages safely (avoid division by zero)
+      const total = parseInt(stats.total) || 0;
+      const active = parseInt(stats.active) || 0;
+      const inactive = parseInt(stats.inactive) || 0;
+      
+      const activePercentage = total > 0 ? Math.round((active / total) * 100) : 0;
+      const inactivePercentage = total > 0 ? Math.round((inactive / total) * 100) : 0;
+      
       return {
-        total: parseInt(stats.total),
-        active: parseInt(stats.active),
-        inactive: parseInt(stats.inactive),
-        activePercentage: Math.round((stats.active / stats.total) * 100),
-        inactivePercentage: Math.round((stats.inactive / stats.total) * 100)
+        total,
+        active,
+        inactive,
+        activePercentage,
+        inactivePercentage
       };
     } catch (error) {
       console.error('Error getting equipment statistics:', error);

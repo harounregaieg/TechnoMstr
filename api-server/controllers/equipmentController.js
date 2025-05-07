@@ -9,7 +9,9 @@ const notificationController = require('./notificationController');
  */
 exports.getAllEquipment = async (req, res) => {
   try {
-    const equipement = await equipmentRepository.getAllEquipment();
+    // Extract department from authenticated user or query param
+    const department = req.user?.departement || req.query.departement || null;
+    const equipement = await equipmentRepository.getAllEquipment(department);
     res.json(equipement);
   } catch (error) {
     console.error('Error getting equipment:', error);
@@ -24,7 +26,16 @@ exports.getAllEquipment = async (req, res) => {
  */
 exports.addEquipment = async (req, res) => {
   try {
-    const equipement = await equipmentRepository.addEquipment(req.body);
+    // Get the department from the user if available
+    const userDepartment = req.user?.departement || req.body.departement;
+    
+    // Add department to the equipment data
+    const equipmentData = {
+      ...req.body,
+      departement: userDepartment
+    };
+    
+    const equipement = await equipmentRepository.addEquipment(equipmentData);
     await notificationController.createNotification(
       'success',
       'equipment',
@@ -52,6 +63,9 @@ exports.addScannedPrinter = async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: ip and printer' });
   }
   
+  // Get the user's department if available
+  const userDepartment = req.user?.departement || req.body.departement;
+  
   // Handle PDA case separately
   if (printer.type === 'PDA') {
     try {
@@ -59,10 +73,11 @@ exports.addScannedPrinter = async (req, res) => {
       const equipmentData = {
         modele: printer.model || 'Unknown Model',
         ipAdresse: ip.trim(),
-        disponibilite: true, // PDAs are considered available if detected
-        type: 'PDA', // Explicitly set type as PDA
-        idMarque: 1, // Assuming 3 is the ID for Zebra PDAs in your marque table
-        serialnumber: printer.serialnumber || 'Unknown' // Only use lowercase property
+        disponibilite: true, 
+        type: 'PDA',
+        idMarque: 1, 
+        serialnumber: printer.serialnumber || 'Unknown', 
+        departement: userDepartment // Add the user's department
       };
       
       // Handle the N/A or missing serialnumber case
@@ -119,12 +134,29 @@ exports.addScannedPrinter = async (req, res) => {
       const pdaResult = await pdaRepository.addPda(pdaData);
       
       // Store the installed applications if any
+      let appsResult = null;
       if (Array.isArray(printer.installedApps) && printer.installedApps.length > 0) {
         console.log(`Storing ${printer.installedApps.length} applications for PDA ID ${equipement.local.idequipement}`);
-        const appsResult = await pdaRepository.storeApplicationsForPda(equipement.local.idequipement, printer.installedApps);
+        appsResult = await pdaRepository.storeApplicationsForPda(equipement.local.idequipement, printer.installedApps);
         console.log('Applications stored:', appsResult);
       } else {
-        console.log('No applications to store for this PDA');
+        console.log('No applications to store for this PDA or applications property missing');
+        // If installedApps is not in the request, try to get them directly from the device
+        try {
+          const { getInstalledApps } = require('./pdainfo');
+          console.log(`Attempting to get installed apps directly from device ${ip}...`);
+          const installedApps = await getInstalledApps(ip);
+          
+          if (installedApps && installedApps.length > 0) {
+            console.log(`Retrieved ${installedApps.length} applications directly from PDA ${ip}`);
+            appsResult = await pdaRepository.storeApplicationsForPda(equipement.local.idequipement, installedApps);
+            console.log('Applications stored from direct device query:', appsResult);
+          } else {
+            console.log('No applications found directly from device');
+          }
+        } catch (appsError) {
+          console.error('Error retrieving applications directly from device:', appsError);
+        }
       }
       
       await notificationController.createNotification(
@@ -141,7 +173,8 @@ exports.addScannedPrinter = async (req, res) => {
           serialnumber: equipmentData.serialnumber,
           marque: 'Zebra'
         }, 
-        pda: pdaResult 
+        pda: pdaResult,
+        apps: appsResult
       });
     } catch (error) {
       console.error('Error adding PDA:', error);
@@ -217,13 +250,14 @@ exports.addScannedPrinter = async (req, res) => {
           // Update the existing equipment
           const updateQuery = `
             UPDATE equipement 
-            SET modele = $1, disponibilite = $2 
-            WHERE idequipement = $3
+            SET modele = $1, disponibilite = $2, departement = $3 
+            WHERE idequipement = $4
             RETURNING *
           `;
           const updateResult = await localPool.query(updateQuery, [
             model || printer.model || 'Unknown Printer',
             disponibilite,
+            userDepartment,
             idequipement
           ]);
           
@@ -237,13 +271,14 @@ exports.addScannedPrinter = async (req, res) => {
             try {
               const cloudUpdateQuery = `
                 UPDATE equipement
-                SET modele = $1, disponibilite = $2 
-                WHERE idequipement = $3
+                SET modele = $1, disponibilite = $2, departement = $3 
+                WHERE idequipement = $4
                 RETURNING *
               `;
               const cloudUpdateResult = await cloudPool.query(cloudUpdateQuery, [
                 model || printer.model || 'Unknown Printer',
                 disponibilite,
+                userDepartment,
                 cloudIdequipement
               ]);
               equipement.cloud = cloudUpdateResult.rows[0];
@@ -257,7 +292,8 @@ exports.addScannedPrinter = async (req, res) => {
           const equipmentData = {
             modele: model || printer.model || 'Unknown Printer',
             ipAdresse: ip.trim(), // Remove any whitespace or line endings
-            disponibilite: disponibilite
+            disponibilite: disponibilite,
+            departement: userDepartment
           };
           console.log('Adding equipment with data:', equipmentData);
           
@@ -270,7 +306,8 @@ exports.addScannedPrinter = async (req, res) => {
         const equipmentData = {
           modele: model || printer.model || 'Unknown Printer',
           ipAdresse: ip.trim(),
-          disponibilite: disponibilite
+          disponibilite: disponibilite,
+          departement: userDepartment
         };
         console.log('Adding equipment with data:', equipmentData);
         

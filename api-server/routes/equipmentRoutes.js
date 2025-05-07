@@ -1,7 +1,9 @@
 const express = require('express');
 const equipmentController = require('../controllers/equipmentController');
 const equipmentRepository = require('../models/equipmentRepository');
+const pdaRepository = require('../models/pdaRepository');
 const { scanDevices } = require('../controllers/pdainfo');
+const { syncAllPdaApplications } = require('../scripts/syncPdaApps');
 const { localPool } = require('../config/db');
 
 const router = express.Router();
@@ -33,6 +35,97 @@ router.get('/pda/scan', async (req, res) => {
     } catch (error) {
         console.error('Error scanning PDAs:', error);
         res.status(500).json({ error: 'Failed to scan PDAs' });
+    }
+});
+
+// Route to get a PDA with its installed applications
+router.get('/pda/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const pda = await pdaRepository.getPdaWithApplications(id);
+        
+        if (!pda) {
+            return res.status(404).json({ error: 'PDA not found' });
+        }
+        
+        res.json(pda);
+    } catch (error) {
+        console.error('Error getting PDA with applications:', error);
+        res.status(500).json({ error: 'Failed to get PDA details' });
+    }
+});
+
+// Get applications for a specific PDA
+router.get('/pda/:id/applications', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const applications = await pdaRepository.getPdaApplications(id);
+        
+        console.log(`Retrieved ${applications.length} applications for PDA ID ${id}`);
+        
+        res.json({
+            success: true,
+            applications: applications
+        });
+    } catch (error) {
+        console.error(`Error getting applications for PDA ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to get PDA applications' });
+    }
+});
+
+// Route to sync applications for all PDAs
+router.post('/pda/sync-apps', async (req, res) => {
+    try {
+        let result;
+        
+        // If a specific PDA ID is provided, only sync that PDA
+        if (req.body.pdaId) {
+            const pdaId = req.body.pdaId;
+            console.log(`Syncing applications for specific PDA: ${pdaId}`);
+            
+            // Get the PDA's IP address
+            const pdaQuery = `
+                SELECT e.idequipement, e.ipadresse
+                FROM equipement e
+                JOIN pda p ON e.idequipement = p.id
+                WHERE e.idequipement = $1
+            `;
+            const pdaResult = await localPool.query(pdaQuery, [pdaId]);
+            
+            if (pdaResult.rows.length === 0) {
+                return res.status(404).json({ error: 'PDA not found' });
+            }
+            
+            const ip = pdaResult.rows[0].ipadresse;
+            
+            // Get PDA apps using ADB
+            const { getInstalledApps } = require('../controllers/pdainfo');
+            console.log(`Retrieving applications for PDA ${pdaId} with IP ${ip}...`);
+            
+            const installedApps = await getInstalledApps(ip);
+            
+            if (installedApps && installedApps.length > 0) {
+                console.log(`Retrieved ${installedApps.length} applications for PDA ${pdaId}`);
+                result = await pdaRepository.storeApplicationsForPda(pdaId, installedApps);
+                console.log('Applications stored:', result);
+            } else {
+                result = { success: false, message: 'No applications found on the PDA' };
+            }
+        } else {
+            // Sync all PDAs
+            result = await syncAllPdaApplications();
+        }
+        
+        res.json({
+            success: true,
+            message: req.body.pdaId 
+                ? `PDA applications synchronized for PDA ID: ${req.body.pdaId}` 
+                : 'All PDA applications synchronized',
+            result
+        });
+    } catch (error) {
+        console.error('Error synchronizing PDA applications:', error);
+        res.status(500).json({ error: 'Failed to synchronize PDA applications' });
     }
 });
 
@@ -104,6 +197,116 @@ router.get('/activities/recent', async (req, res) => {
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
+});
+
+// Get DataWedge version for a specific PDA
+router.get('/pda/:id/datawedge-version', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Get the PDA's IP address first
+        const query = `
+            SELECT e.ipadresse
+            FROM equipement e
+            JOIN pda p ON e.idequipement = p.id
+            WHERE e.idequipement = $1
+        `;
+        
+        const result = await localPool.query(query, [id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'PDA not found' });
+        }
+        
+        const ip = result.rows[0].ipadresse;
+        
+        // Get DataWedge version using ADB
+        const { promisify } = require('util');
+        const { exec } = require('child_process');
+        const execPromise = promisify(exec);
+        
+        console.log(`Fetching DataWedge version for PDA ${id} (IP: ${ip})...`);
+        
+        try {
+            const { stdout } = await execPromise(`adb -s ${ip}:5555 shell "dumpsys package com.symbol.datawedge | grep versionName"`);
+            
+            // Parse version from output (format: "versionName=X.X.X.X")
+            let version = 'Not installed';
+            const versionMatch = stdout.match(/versionName=([0-9.]+)/);
+            
+            if (versionMatch && versionMatch[1]) {
+                version = versionMatch[1];
+                console.log(`Found DataWedge version: ${version}`);
+            } else {
+                console.log('DataWedge version not found in output:', stdout);
+            }
+            
+            res.json({
+                success: true,
+                datawedgeVersion: version
+            });
+        } catch (adbError) {
+            console.error('Error executing ADB command:', adbError);
+            res.json({
+                success: false,
+                datawedgeVersion: 'Error retrieving version',
+                error: adbError.message
+            });
+        }
+    } catch (error) {
+        console.error(`Error getting DataWedge version for PDA ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to get DataWedge version' });
+    }
+});
+
+// Get DeviceManager version for a specific PDA
+router.get('/pda/:id/devicemanager-version', async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Get the PDA's IP address first
+        const query = `
+            SELECT e.ipadresse
+            FROM equipement e
+            JOIN pda p ON e.idequipement = p.id
+            WHERE e.idequipement = $1
+        `;
+        const result = await localPool.query(query, [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'PDA not found' });
+        }
+        const ip = result.rows[0].ipadresse;
+        // Get DeviceManager version using ADB
+        const { promisify } = require('util');
+        const { exec } = require('child_process');
+        const execPromise = promisify(exec);
+        console.log(`Fetching DeviceManager version for PDA ${id} (IP: ${ip})...`);
+        try {
+            const { stdout } = await execPromise(`adb -s ${ip}:5555 shell "dumpsys package com.zebra.devicemanager | grep versionName"`);
+            // Parse version from output (format: "versionName=X.X.X.X")
+            let version = 'Not installed';
+            const versionMatch = stdout.match(/versionName=([0-9.]+)/);
+            if (versionMatch && versionMatch[1]) {
+                version = versionMatch[1];
+                console.log(`Found DeviceManager version: ${version}`);
+            } else {
+                console.log('DeviceManager version not found in output:', stdout);
+            }
+            res.json({
+                success: true,
+                devicemanagerVersion: version
+            });
+        } catch (adbError) {
+            console.error('Error executing ADB command:', adbError);
+            res.json({
+                success: false,
+                devicemanagerVersion: 'Error retrieving version',
+                error: adbError.message
+            });
+        }
+    } catch (error) {
+        console.error(`Error getting DeviceManager version for PDA ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to get DeviceManager version' });
+    }
 });
 
 module.exports = router; 

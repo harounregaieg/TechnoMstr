@@ -35,10 +35,7 @@
                 <span class="info-label">Adresse IP</span>
                 <span class="info-value">{{ ticket.equipmentIp || 'Non spécifiée' }}</span>
               </div>
-              <div class="info-item">
-                <span class="info-label">Emplacement</span>
-                <span class="info-value">{{ ticket.location }}</span>
-              </div>
+              
               <div class="info-item">
                 <span class="info-label">Pièce(s) à Remplacer</span>
                 <span class="info-value">{{ ticket.partsToReplace || 'Aucune pièce spécifiée' }}</span>
@@ -141,7 +138,7 @@ const ticket = ref({
   subject: '',
   equipmentId: '',
   equipmentIp: '',
-  location: '',
+  departement: '',
   status: '',
   partsToReplace: '',
   description: '',

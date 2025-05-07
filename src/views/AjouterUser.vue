@@ -28,7 +28,45 @@
             <option value="user">User</option>
             <option value="technicien">Technicien</option>
           </FormField>
-          <FormField label="Departement" type="text" v-model="formData.department" :error="errors.department" :disabled="true" />
+          <FormField 
+            v-if="!isTechnoCodeUser" 
+            label="Departement" 
+            type="text" 
+            v-model="formData.department" 
+            :error="errors.department" 
+            :disabled="true" 
+          />
+          <div v-else class="department-selection">
+            <FormField 
+              label="Departement" 
+              type="select" 
+              v-model="formData.department" 
+              :error="errors.department"
+              @change="onDepartmentChange"
+            >
+              <option value="" hidden>Sélectionnez un Departement</option>
+              <option v-for="dept in departments" :key="dept.id" :value="dept.nomdep">
+                {{ dept.nomdep }}
+              </option>
+              <option value="create-new">+ Créer un nouveau département</option>
+            </FormField>
+            <div v-if="isCreatingDepartment" class="new-department-input">
+              <input 
+                type="text"
+                v-model="newDepartmentName"
+                placeholder="Nom du département"
+                @keyup.enter="createNewDepartment"
+              />
+              <div class="new-dept-actions">
+                <button type="button" class="create-dept-btn" @click="createNewDepartment" :disabled="!newDepartmentName">
+                  Créer
+                </button>
+                <button type="button" class="cancel-dept-btn" @click="cancelNewDepartment">
+                  Annuler
+                </button>
+              </div>
+            </div>
+          </div>
         </FormRow>
 
         <FormRow>
@@ -100,6 +138,10 @@ export default {
       successMessage: "",
       isEditing: false,
       currentUser: null,
+      isTechnoCodeUser: false,
+      departments: [],
+      isCreatingDepartment: false,
+      newDepartmentName: "",
       errors: {
         lastName: "",
         firstName: "",
@@ -114,8 +156,17 @@ export default {
     // Fetch current user to get department
     try {
       this.currentUser = await userApi.getCurrentUser();
+      
+      // Check if user is from TechnoCode department
+      this.isTechnoCodeUser = this.currentUser.departement === "TechnoCode";
+      
       // Set department from current user
       this.formData.department = this.currentUser.departement;
+      
+      // If user is from TechnoCode, fetch departments
+      if (this.isTechnoCodeUser) {
+        await this.fetchDepartments();
+      }
     } catch (error) {
       console.error("Error fetching current user:", error);
     }
@@ -128,6 +179,51 @@ export default {
     }
   },
   methods: {
+    async fetchDepartments() {
+      try {
+        this.departments = await userApi.getDepartments();
+      } catch (deptError) {
+        console.error("Error fetching departments:", deptError);
+        this.errorMessage = "Impossible de récupérer la liste des départements";
+      }
+    },
+    onDepartmentChange(event) {
+      if (this.formData.department === 'create-new') {
+        this.isCreatingDepartment = true;
+        this.formData.department = ''; // Reset department selection
+      }
+    },
+    async createNewDepartment() {
+      if (!this.newDepartmentName) {
+        return;
+      }
+      
+      try {
+        this.isSubmitting = true;
+        const result = await userApi.createDepartment(this.newDepartmentName);
+        
+        // Add the new department to the list and select it
+        if (result.success) {
+          this.successMessage = "Département créé avec succès";
+          await this.fetchDepartments(); // Refresh departments list
+          
+          // Select the newly created department
+          this.formData.department = this.newDepartmentName;
+        }
+        
+        // Reset creation state
+        this.isCreatingDepartment = false;
+        this.newDepartmentName = "";
+      } catch (error) {
+        this.errorMessage = error.response?.data?.error || "Erreur lors de la création du département";
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+    cancelNewDepartment() {
+      this.isCreatingDepartment = false;
+      this.newDepartmentName = "";
+    },
     async fetchUserData(userId) {
       try {
         const userData = await userApi.getUserById(userId);
@@ -188,6 +284,12 @@ export default {
         isValid = false;
       } else if (this.formData.password && this.formData.password.length < 6) {
         this.errors.password = "Le mot de passe doit contenir au moins 6 caractères";
+        isValid = false;
+      }
+
+      // Department is required
+      if (!this.formData.department) {
+        this.errors.department = "Le département est requis";
         isValid = false;
       }
       
@@ -354,5 +456,54 @@ export default {
   color: #166534;
   border-radius: 4px;
   margin-bottom: 16px;
+}
+
+.department-selection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.new-department-input {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.new-department-input input {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.new-dept-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.create-dept-btn, .cancel-dept-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+}
+
+.create-dept-btn {
+  background-color: #2563eb;
+  color: white;
+}
+
+.create-dept-btn:disabled {
+  background-color: #93c5fd;
+  cursor: not-allowed;
+}
+
+.cancel-dept-btn {
+  background-color: #f3f4f6;
+  border: 1px solid #d1d5db;
+  color: #374151;
 }
 </style>

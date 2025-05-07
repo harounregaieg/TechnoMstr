@@ -92,4 +92,23 @@ export const userApi = {
     }
   },
 
+  async getDepartments() {
+    try {
+      const response = await axios.get(`${API_URL}/departments`);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching departments:", error);
+      throw error;
+    }
+  },
+
+  async createDepartment(departmentName) {
+    try {
+      const response = await axios.post(`${API_URL}/departments`, { nomdep: departmentName });
+      return response.data;
+    } catch (error) {
+      console.error("Error creating department:", error);
+      throw error;
+    }
+  },
 };

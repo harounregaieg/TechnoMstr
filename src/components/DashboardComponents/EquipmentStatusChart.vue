@@ -18,10 +18,41 @@
       </div>
       <div class="chart-visual">
         <svg width="150" height="150" viewBox="0 0 150 150">
-          <g>
-            <template v-for="(segment, idx) in animatedPieSegments" :key="idx">
-              <path :d="segment.d" :fill="segment.color" />
-            </template>
+          <!-- Show placeholder circle if no equipment or all counts are zero -->
+          <circle
+            v-if="totalEquipment === 0"
+            cx="75"
+            cy="75"
+            r="70"
+            fill="#e0e0e0"
+          />
+          
+          <!-- Single status case - show one full circle -->
+          <circle
+            v-else-if="singleStatusType"
+            cx="75"
+            cy="75"
+            r="70"
+            :fill="singleStatusColor"
+          />
+          
+          <!-- Multiple status case - show pie segments -->
+          <g v-else>
+            <path
+              v-if="errorSegment.visible"
+              :d="errorSegment.path"
+              fill="#F44336"
+            />
+            <path
+              v-if="warningSegment.visible"
+              :d="warningSegment.path"
+              fill="#FF9800"
+            />
+            <path
+              v-if="okSegment.visible"
+              :d="okSegment.path"
+              fill="#4CAF50"
+            />
           </g>
         </svg>
       </div>
@@ -35,107 +66,99 @@ import { defineProps, computed, ref, onMounted, watch } from 'vue';
 const props = defineProps({
   equipmentStatusStats: {
     type: Object,
-    required: true
+    required: true,
+    default: () => ({
+      ok: 0,
+      warning: 0,
+      error: 0,
+      okPercentage: 0,
+      warningPercentage: 0,
+      errorPercentage: 0
+    })
   }
 });
 
-function describeArc(cx, cy, r, startAngle, endAngle) {
-  const start = polarToCartesian(cx, cy, r, endAngle);
-  const end = polarToCartesian(cx, cy, r, startAngle);
-  const sweep = endAngle - startAngle;
-  const largeArcFlag = sweep <= 180 ? '0' : '1';
-  return [
-    'M', cx, cy,
-    'L', start.x, start.y,
-    'A', r, r, 0, largeArcFlag, 0, end.x, end.y,
-    'Z'
-  ].join(' ');
-}
-function polarToCartesian(cx, cy, r, angleInDegrees) {
+// SVG circle center and radius
+const cx = 75;
+const cy = 75;
+const radius = 70;
+
+// Calculate total equipment
+const totalEquipment = computed(() => {
+  return props.equipmentStatusStats.ok + props.equipmentStatusStats.warning + props.equipmentStatusStats.error;
+});
+
+// Determine if we have only a single status type
+const singleStatusType = computed(() => {
+  const { ok, warning, error } = props.equipmentStatusStats;
+  const nonZeroCount = [ok, warning, error].filter(count => count > 0).length;
+  return nonZeroCount === 1;
+});
+
+// Determine the color for single status case
+const singleStatusColor = computed(() => {
+  const { ok, warning, error } = props.equipmentStatusStats;
+  if (error > 0) return '#F44336'; // Red
+  if (warning > 0) return '#FF9800'; // Orange
+  if (ok > 0) return '#4CAF50'; // Green
+  return '#e0e0e0'; // Gray (fallback)
+});
+
+// Helper function to convert polar to cartesian coordinates
+function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
   const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
   return {
-    x: cx + r * Math.cos(angleInRadians),
-    y: cy + r * Math.sin(angleInRadians)
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians)
   };
 }
 
-const cx = 75, cy = 75, r = 70;
-const animationDuration = 900; // ms per segment
-const animationStagger = 200; // ms delay between segments
-
-const segmentDefs = computed(() => {
-  const { okPercentage, warningPercentage, errorPercentage } = props.equipmentStatusStats;
+// Helper function to create SVG arc path
+function describeArc(centerX, centerY, radius, startAngle, endAngle) {
+  // If the segment is very small, just return null
+  if (Math.abs(endAngle - startAngle) < 0.1) return null;
+  
+  const start = polarToCartesian(centerX, centerY, radius, endAngle);
+  const end = polarToCartesian(centerX, centerY, radius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+  
   return [
-    { value: errorPercentage, color: '#F44336' },
-    { value: warningPercentage, color: '#FF9800' },
-    { value: okPercentage, color: '#4CAF50' }
-  ];
-});
-
-const animatedAngles = ref([0, 0, 0]);
-
-const animatedPieSegments = computed(() => {
-  const defs = segmentDefs.value;
-  const total = defs.reduce((sum, seg) => sum + seg.value, 0);
-  // If all are zero, show a gray placeholder
-  if (total === 0) {
-    return [{ d: describeArc(cx, cy, r, 0, 360), color: '#e0e0e0' }];
-  }
-  // If only one segment is nonzero, draw a full circle for it
-  const nonzero = defs.filter(seg => seg.value > 0);
-  if (nonzero.length === 1) {
-    return [{ d: describeArc(cx, cy, r, 0, 360), color: nonzero[0].color }];
-  }
-  // Otherwise, draw each segment as animated
-  let startAngle = 0;
-  return defs.map((seg, i) => {
-    if (seg.value === 0) return null;
-    const sweep = animatedAngles.value[i];
-    if (sweep === 0) return null;
-    const endAngle = startAngle + sweep;
-    const d = describeArc(cx, cy, r, startAngle, endAngle);
-    const out = { d, color: seg.color };
-    startAngle = endAngle;
-    return out;
-  }).filter(Boolean);
-});
-
-function animateSegments() {
-  const targets = segmentDefs.value.map(seg => seg.value * 3.6); // 1% = 3.6deg
-  animatedAngles.value = [0, 0, 0];
-  // If only one segment is nonzero or all are zero, skip animation
-  const nonzero = targets.filter(v => v > 0);
-  if (nonzero.length <= 1) {
-    animatedAngles.value = targets;
-    return;
-  }
-  function animateSegment(idx, timestamp, segmentStart) {
-    if (!segmentStart) segmentStart = timestamp;
-    const elapsed = timestamp - segmentStart;
-    const progress = Math.min(elapsed / animationDuration, 1);
-    animatedAngles.value[idx] = targets[idx] * progress;
-    if (progress < 1) {
-      requestAnimationFrame(ts => animateSegment(idx, ts, segmentStart));
-    } else {
-      animatedAngles.value[idx] = targets[idx];
-      // Start next segment after stagger
-      if (idx + 1 < targets.length) {
-        setTimeout(() => {
-          requestAnimationFrame(ts => animateSegment(idx + 1, ts));
-        }, animationStagger);
-      }
-    }
-  }
-  // Start first segment
-  requestAnimationFrame(ts => animateSegment(0, ts));
+    'M', centerX, centerY,
+    'L', start.x, start.y,
+    'A', radius, radius, 0, largeArcFlag, 0, end.x, end.y,
+    'Z'
+  ].join(' ');
 }
 
-onMounted(() => {
-  animateSegments();
+// Calculate segment paths
+const errorSegment = computed(() => {
+  const { errorPercentage } = props.equipmentStatusStats;
+  const visible = errorPercentage > 0;
+  const startAngle = 0;
+  const endAngle = (errorPercentage / 100) * 360;
+  const path = describeArc(cx, cy, radius, startAngle, endAngle);
+  
+  return { visible, path };
 });
 
-watch(() => ({...props.equipmentStatusStats}), () => {
-  animateSegments();
+const warningSegment = computed(() => {
+  const { errorPercentage, warningPercentage } = props.equipmentStatusStats;
+  const visible = warningPercentage > 0;
+  const startAngle = (errorPercentage / 100) * 360;
+  const endAngle = startAngle + (warningPercentage / 100) * 360;
+  const path = describeArc(cx, cy, radius, startAngle, endAngle);
+  
+  return { visible, path };
+});
+
+const okSegment = computed(() => {
+  const { errorPercentage, warningPercentage, okPercentage } = props.equipmentStatusStats;
+  const visible = okPercentage > 0;
+  const startAngle = ((errorPercentage + warningPercentage) / 100) * 360;
+  const endAngle = startAngle + (okPercentage / 100) * 360;
+  const path = describeArc(cx, cy, radius, startAngle, endAngle);
+  
+  return { visible, path };
 });
 </script>
 
